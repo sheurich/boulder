@@ -11,10 +11,24 @@ services:
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - /tmp:/tmp
-        network_mode: bridge
+        network_mode: service:bhsm
+        depends_on:
+          - bhsm
+          - bmysql
+    bhsm:
+        # To minimize the fetching of various layers this should match
+        # the FROM image and tag in boulder/Dockerfile
+        image: letsencrypt/boulder-tools:2017-10-05
+        environment:
+            PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
+        command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
+        # extra_hosts and ports for boulder are declared here as other
+        # containers uses the networking stack of this container.
         extra_hosts:
           - le.wtf:127.0.0.1
           - boulder:127.0.0.1
+          - boulder-hsm:127.0.0.1
+          - boulder-mysql:127.0.0.1
         ports:
           - 4000:4000 # ACME
           - 4001:4001 # ACMEv2
@@ -37,34 +51,24 @@ services:
           - 8055:8055 # dns-test-srv updates
           - 9380:9380 # mail-test-srv
           - 9381:9381 # mail-test-srv
-        links:
-          - bhsm:boulder-hsm
-          - bmysql:boulder-mysql
-    bhsm:
-        # To minimize the fetching of various layers this should match
-        # the FROM image and tag in boulder/Dockerfile
-        image: letsencrypt/boulder-tools:2017-10-05
-        environment:
-            PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
-        command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
-        expose:
-          - 5657
-        network_mode: bridge
+        # Allow other containers to use the name "boulder" to connect
+        networks:
+            default:
+                aliases:
+                  - boulder
     bmysql:
         image: mariadb:10.1
-        network_mode: bridge
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
         command: mysqld --bind-address=0.0.0.0
         logging:
             driver: none
+        network_mode: service:bhsm
     prom:
         image: prom/prometheus
-        network_mode: bridge
-        ports:
-          - 9090:9090
         volumes:
-          - $PWD/test/prometheus/:/promconf/
+          - ./test/prometheus/:/promconf/
         command: -config.file /promconf/prometheus.yml
-        links:
+        depends_on:
           - boulder
+        network_mode: service:bhsm
