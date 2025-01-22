@@ -1,0 +1,5 @@
+version: "3"
+services:
+  boulder:
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    dns: 10.55.55.10

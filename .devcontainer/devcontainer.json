@@ -1,0 +1,34 @@
+{
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    },
+    "dockerComposeFile": [
+        "../docker-compose.yml",
+        "docker-compose.yml"
+    ],
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "forwardPorts": [
+        4000,
+        4001,
+        4002,
+        4003,
+        4430,
+        4431,
+        4500,
+        6379,
+        8055,
+        9380,
+        9381
+    ],
+    "name": "Boulder Development",
+    "postCreateCommand": "./test.sh --generate",
+    "service": "boulder",
+    "workspaceFolder": "/boulder"
+}
