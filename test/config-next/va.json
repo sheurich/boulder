@@ -39,7 +39,8 @@
 		},
 		"features": {
 			"EnforceMultiCAA": true,
-			"DOH": true
+			"DOH": true,
+			"DnsAccountChallenge": true
 		},
 		"remoteVAs": [
 			{

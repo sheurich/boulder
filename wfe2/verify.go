@@ -21,6 +21,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
 	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
@@ -36,6 +37,9 @@ const (
 	expectedJWSContentType = "application/jose+json"
 
 	maxRequestSize = 50000
+
+	// challengePathPrefix is the path prefix for ACME challenge validation
+	challengePathPrefix = "/acme/chall/"
 )
 
 func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
@@ -263,6 +267,9 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 // HTTP request. This prevents a JWS intended for one endpoint being replayed
 // against a different endpoint. If the URL isn't present, is invalid, or
 // doesn't match the HTTP request a problem is returned.
+//
+// For dns-account-01 challenges, the URL header must include the account URL
+// which is used to generate the unique DNS label.
 func (wfe *WebFrontEndImpl) validPOSTURL(
 	request *http.Request,
 	header jose.Header) *probs.ProblemDetails {
@@ -287,6 +294,16 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	// Check that the URL we expect is the one that was found in the signed JWS
 	// header
 	if expectedURL.String() != headerURL {
+		// For dns-account-01 challenges, we need to extract the account URL from the request
+		// to generate the unique DNS label
+		if strings.Contains(request.URL.Path, challengePathPrefix) &&
+			features.Get().DnsAccountChallenge {
+			// Store the account URL in the context for use during challenge validation
+			ctx := request.Context()
+			ctx = context.WithValue(ctx, core.AccountURLContextKey{}, headerURL)
+			*request = *request.WithContext(ctx)
+			return nil
+		}
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMismatchedURL"}).Inc()
 		return probs.Malformed(fmt.Sprintf(
 			"JWS header parameter 'url' incorrect. Expected %q got %q",

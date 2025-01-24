@@ -2,8 +2,11 @@ package va
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base32"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,11 +15,89 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
+
+var dnsTestKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+var dnsTestCtx = context.Background()
+
+func TestDNSAccountValidationEmpty(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+
+	// Test values
+	domain := "empty-txts.com"
+	accountURL := "https://example.com/acme/acct/1"
+
+	// This test calls validateDNSAccount01 directly to test empty TXT record handling
+	_, err := va.validateDNSAccount01(context.Background(), dnsi(domain), dnsTestKeyAuthorization, accountURL)
+	test.AssertError(t, err, "Should fail with no TXT record")
+	if features.Get().DnsAccountChallenge {
+		// Per section 3.4 of draft-ietf-acme-dns-account-label-00:
+		// "If no TXT record is found, the server SHOULD include the account URL in the error"
+		test.AssertContains(t, err.Error(), "No TXT record found at _")
+		test.AssertContains(t, err.Error(), accountURL)
+	} else {
+		test.AssertContains(t, err.Error(), "dns-account-01 challenge type is not enabled")
+	}
+
+	if features.Get().DnsAccountChallenge {
+		test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+			"operation":      opDCVAndCAA,
+			"perspective":    va.perspective,
+			"challenge_type": string(core.ChallengeTypeDNSAccount01),
+			"problem_type":   string(probs.UnauthorizedProblem),
+			"result":         fail,
+		}, 1)
+	}
+}
+
+func TestDNSAccountValidationServFail(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+	_, err := va.validateDNSAccount01(context.Background(), dnsi("servfail.com"), dnsTestKeyAuthorization, "https://example.com/acme/acct/1")
+	prob := detailedError(err)
+	if features.Get().DnsAccountChallenge {
+		test.AssertEquals(t, prob.Type, probs.DNSProblem)
+	} else {
+		test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+	}
+}
+
+func TestDNSAccountValidationConcurrent(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+	domain := "concurrent-test.com"
+
+	// Run validations concurrently with different account URLs
+	resultChan := make(chan error, 2)
+	go func() {
+		_, err := va.validateDNSAccount01(context.Background(), dnsi(domain), dnsTestKeyAuthorization, "https://example.com/acme/acct/1")
+		resultChan <- err
+	}()
+	go func() {
+		_, err := va.validateDNSAccount01(context.Background(), dnsi(domain), dnsTestKeyAuthorization, "https://example.com/acme/acct/2")
+		resultChan <- err
+	}()
+
+	// Both validations should fail independently
+	for i := 0; i < 2; i++ {
+		err := <-resultChan
+		test.AssertError(t, err, "Should fail with no TXT record")
+		if features.Get().DnsAccountChallenge {
+			test.AssertContains(t, err.Error(), "No TXT record found at _")
+		} else {
+			test.AssertContains(t, err.Error(), "dns-account-01 challenge type is not enabled")
+		}
+	}
+}
 
 func TestDNSValidationEmpty(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
@@ -37,9 +118,36 @@ func TestDNSValidationEmpty(t *testing.T) {
 	}, 1)
 }
 
+func TestDNSAccountValidationWrong(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+
+	// Test values
+	domain := "wrong-dns01.com"
+	accountURL := "https://example.com/acme/acct/1"
+
+	testCtx := context.WithValue(context.Background(), core.AccountURLContextKey{}, accountURL)
+	_, err := va.validateDNSAccount01(testCtx, dnsi(domain), dnsTestKeyAuthorization, accountURL)
+	if err == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	prob := detailedError(err)
+	if features.Get().DnsAccountChallenge {
+		// Per section 3.3 of draft-ietf-acme-dns-account-label-00:
+		// "The server MUST mark the challenge as invalid if any verification fails"
+		test.AssertContains(t, prob.Error(), "Incorrect TXT record")
+		test.AssertContains(t, prob.Error(), "._acme-challenge.wrong-dns01.com")
+		// Per section 3.4: Follow RFC8555 Section 6.7 error guidelines
+		test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	} else {
+		test.AssertContains(t, prob.Error(), "dns-account-01 challenge type is not enabled")
+	}
+}
+
 func TestDNSValidationWrong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
-	_, err := va.validateDNS01(context.Background(), dnsi("wrong-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), dnsi("wrong-dns01.com"), dnsTestKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -50,7 +158,7 @@ func TestDNSValidationWrong(t *testing.T) {
 func TestDNSValidationWrongMany(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(context.Background(), dnsi("wrong-many-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), dnsi("wrong-many-dns01.com"), dnsTestKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -61,7 +169,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 func TestDNSValidationWrongLong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(context.Background(), dnsi("long-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), dnsi("long-dns01.com"), dnsTestKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -72,7 +180,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, dnsi("localhost"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(dnsTestCtx, dnsi("localhost"), dnsTestKeyAuthorization)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
@@ -86,7 +194,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, notDNS, expectedKeyAuthorization)
+	_, err := va.validateDNS01(dnsTestCtx, notDNS, dnsTestKeyAuthorization)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -95,10 +203,25 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, dnsi("servfail.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(dnsTestCtx, dnsi("servfail.com"), dnsTestKeyAuthorization)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
+}
+
+func TestDNSAccountValidationNoAccountURL(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+
+	testCtx := context.Background() // No account URL in context
+	_, err := va.validateDNSAccount01(testCtx, dnsi("example.com"), dnsTestKeyAuthorization, "")
+	test.AssertError(t, err, "Should fail without account URL")
+	if features.Get().DnsAccountChallenge {
+		test.AssertEquals(t, err.Error(), "account URL cannot be empty")
+	} else {
+		test.AssertEquals(t, err.Error(), "dns-account-01 challenge type is not enabled")
+	}
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
@@ -115,25 +238,72 @@ func TestDNSValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, err = va.validateDNS01(ctx, dnsi("localhost"), expectedKeyAuthorization)
+	_, err = va.validateDNS01(dnsTestCtx, dnsi("localhost"), dnsTestKeyAuthorization)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
-func TestDNSValidationOK(t *testing.T) {
+func TestDNSAccountValidationOK(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNS01(ctx, dnsi("good-dns01.com"), expectedKeyAuthorization)
+	testCtx := context.WithValue(context.Background(), core.AccountURLContextKey{}, "https://example.com/acme/acct/1")
+	_, err := va.validateDNSAccount01(testCtx, dnsi("good-dns01.com"), dnsTestKeyAuthorization, testCtx.Value(core.AccountURLContextKey{}).(string))
 
-	test.Assert(t, prob == nil, "Should be valid.")
+	if features.Get().DnsAccountChallenge {
+		test.Assert(t, err == nil, "Should be valid.")
+	} else {
+		test.AssertError(t, err, "Should fail when feature flag is disabled")
+		test.AssertContains(t, err.Error(), "dns-account-01 challenge type is not enabled")
+	}
+}
+
+func TestDNSValidationOK(t *testing.T) {
+	features.Reset()
+	va, _ := setup(nil, "", nil, nil)
+
+	_, err := va.validateDNS01(dnsTestCtx, dnsi("good-dns01.com"), dnsTestKeyAuthorization)
+	test.Assert(t, err == nil, "Should be valid.")
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
+	features.Reset()
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNS01(ctx, dnsi("no-authority-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(dnsTestCtx, dnsi("no-authority-dns01.com"), dnsTestKeyAuthorization)
+	test.Assert(t, err == nil, "Should be valid.")
+}
 
-	test.Assert(t, prob == nil, "Should be valid.")
+func TestDNSAccountLabelGeneration(t *testing.T) {
+	features.Reset()
+	features.Set(features.Config{DnsAccountChallenge: true})
+	va, _ := setup(nil, "", nil, nil)
+
+	// Example values from draft-ietf-acme-dns-account-label-00 section 3.2
+	accountURL := "https://example.com/acme/acct/ExampleAccount"
+	domain := "example.org"
+	expectedSubdomain := "_ujmmovf2vn55tgye._acme-challenge.example.org"
+
+	// Compute the challenge subdomain using our implementation
+	accountHash := sha256.Sum256([]byte(accountURL))
+	accountLabel := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(accountHash[:10])
+	challengeSubdomain := fmt.Sprintf("_%s._acme-challenge.%s", strings.ToLower(accountLabel), domain)
+
+	// Verify it matches the example from the draft
+	test.AssertEquals(t, challengeSubdomain, expectedSubdomain)
+
+	// Also verify through the validation function
+	_, err := va.validateDNSAccount01(context.Background(), dnsi(domain), dnsTestKeyAuthorization, accountURL)
+	if features.Get().DnsAccountChallenge {
+		// The validation will fail because we don't have the TXT record set up,
+		// but we can check that the error message contains the correct subdomain
+		test.AssertError(t, err, "Should fail with no TXT record")
+		test.AssertContains(t, err.Error(), expectedSubdomain)
+	} else {
+		test.AssertError(t, err, "Should fail when feature flag is disabled")
+		test.AssertContains(t, err.Error(), "dns-account-01 challenge type is not enabled")
+	}
 }
 
 func TestAvailableAddresses(t *testing.T) {

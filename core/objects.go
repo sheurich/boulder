@@ -53,15 +53,16 @@ type AcmeChallenge string
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
-	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
-	ChallengeTypeTLSALPN01 = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeHTTP01       = AcmeChallenge("http-01")
+	ChallengeTypeDNS01        = AcmeChallenge("dns-01")
+	ChallengeTypeTLSALPN01    = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeDNSAccount01 = AcmeChallenge("dns-account-01")
 )
 
 // IsValid tests whether the challenge is a known challenge
 func (c AcmeChallenge) IsValid() bool {
 	switch c {
-	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01:
+	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01:
 		return true
 	default:
 		return false
@@ -89,6 +90,9 @@ var OCSPStatusToInt = map[OCSPStatus]int{
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
+
+// AccountURLContextKey is a custom type for the account URL context key
+type AccountURLContextKey struct{}
 
 type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR

@@ -432,6 +432,13 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSAccount01:
+		// Extract account URL from the validation context
+		accountURL := ctx.Value("accountURL")
+		if accountURL == nil {
+			return nil, berrors.MalformedError("account URL not found in validation context")
+		}
+		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURL.(string))
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
