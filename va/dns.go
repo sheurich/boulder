@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/base64"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 )
 
@@ -46,6 +49,80 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 		}
 	}
 	return
+}
+
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURL string) ([]core.ValidationRecord, error) {
+	if !features.Get().DnsAccountChallenge {
+		return nil, berrors.MalformedError("dns-account-01 challenge type is not enabled")
+	}
+
+	if accountURL == "" {
+		return nil, berrors.MalformedError("account URL cannot be empty")
+	}
+
+	if ident.Type != identifier.TypeDNS {
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
+	}
+
+	// Compute the digest of the key authorization file
+	h := sha256.New()
+	h.Write([]byte(keyAuthorization))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	// Compute the account-specific DNS label per draft-ietf-acme-dns-account-label-00 section 3.2
+	// "_" || base32(SHA-256(<ACCOUNT_URL>)[0:10]) || "._acme-challenge"
+	accountHash := sha256.Sum256([]byte(accountURL))
+	// Take first 10 bytes of hash as specified in section 3.2
+	accountLabel := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(accountHash[:10])
+	// Construct validation domain name according to spec
+	challengeSubdomain := fmt.Sprintf("_%s._acme-challenge.%s", strings.ToLower(accountLabel), ident.Value)
+
+	// Query for TXT records at the validation domain name per section 3.3
+	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	if err != nil {
+		return nil, berrors.DNSError("%s", err)
+	}
+
+	// Per section 3.4: If no TXT record is found, include the account URL in the error
+	if len(txts) == 0 {
+		return nil, berrors.UnauthorizedError("No TXT record found at %s (constructed using account URL: %s)",
+			challengeSubdomain, accountURL)
+	}
+
+	// Follow any CNAME records per section 3.1
+	// Note: This is handled automatically by Boulder's DNS client
+
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+			// Successful challenge validation
+			return []core.ValidationRecord{
+				{
+					DnsName:           ident.Value,
+					ResolverAddrs:     resolvers,
+					URL:               "",  // DNS challenges don't use URLs
+					Port:              "",  // DNS challenges don't use ports
+					AddressesResolved: nil, // DNS challenges don't resolve addresses
+					AddressUsed:       nil, // DNS challenges don't use addresses
+					AddressesTried:    nil, // DNS challenges don't try addresses
+				},
+			}, nil
+		}
+	}
+
+	// Per section 3.3: The server MUST mark the challenge as invalid if any verification fails
+	va.log.Debugf("DNS validation failed for account URL: %s", accountURL)
+	invalidRecord := txts[0]
+	if len(invalidRecord) > 100 {
+		invalidRecord = invalidRecord[0:100] + "..."
+	}
+	var andMore string
+	if len(txts) > 1 {
+		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
+	}
+	// Per section 3.4: Follow RFC8555 Section 6.7 error guidelines
+	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {

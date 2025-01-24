@@ -109,6 +109,7 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 // perform multi-perspective validation). Otherwise it acts like a primary.
 func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
+	// Don't enable features by default - let tests control this
 	fc := clock.NewFake()
 
 	logger := blog.NewMock()

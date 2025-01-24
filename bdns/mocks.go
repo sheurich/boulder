@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/miekg/dns"
 
@@ -19,34 +20,54 @@ type MockClient struct {
 
 // LookupTXT is a mock
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
-	if hostname == "_acme-challenge.servfail.com" {
+	// Handle servfail.com domains
+	if strings.Contains(hostname, ".servfail.com") {
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	}
-	if hostname == "_acme-challenge.good-dns01.com" {
+
+	// Handle good-dns01.com domains - return valid response
+	if strings.Contains(hostname, ".good-dns01.com") {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
-	if hostname == "_acme-challenge.wrong-dns01.com" {
+
+	// Handle example.org from the draft spec
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.example.org" {
+		// Return a valid response for the draft example
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+	}
+
+	// Handle wrong-dns01.com domains
+	if strings.Contains(hostname, ".wrong-dns01.com") {
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
 	}
-	if hostname == "_acme-challenge.wrong-many-dns01.com" {
+
+	// Handle wrong-many-dns01.com domains
+	if strings.Contains(hostname, ".wrong-many-dns01.com") {
 		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
 	}
-	if hostname == "_acme-challenge.long-dns01.com" {
+
+	// Handle long-dns01.com domains
+	if strings.Contains(hostname, ".long-dns01.com") {
 		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
 	}
-	if hostname == "_acme-challenge.no-authority-dns01.com" {
+
+	// Handle no-authority-dns01.com domains
+	if strings.Contains(hostname, ".no-authority-dns01.com") {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
-	// empty-txts.com always returns zero TXT records
-	if hostname == "_acme-challenge.empty-txts.com" {
+
+	// Handle empty-txts.com and concurrent-test.com domains
+	if strings.Contains(hostname, ".empty-txts.com") || strings.Contains(hostname, ".concurrent-test.com") {
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
+
+	// Default response for all other domains
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }
 

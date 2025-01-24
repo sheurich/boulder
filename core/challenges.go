@@ -35,6 +35,8 @@ func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
 		return DNSChallenge01(token), nil
 	case ChallengeTypeTLSALPN01:
 		return TLSALPNChallenge01(token), nil
+	case ChallengeTypeDNSAccount01:
+		return DNSChallenge01(token), nil // Reuse DNS01 challenge creation as base
 	default:
 		return Challenge{}, fmt.Errorf("unrecognized challenge type %q", kind)
 	}

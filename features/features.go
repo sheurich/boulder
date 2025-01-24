@@ -106,6 +106,11 @@ type Config struct {
 	// This feature flag also causes CAA checks to happen after all remote VAs
 	// have passed DCV.
 	EnforceMPIC bool
+
+	// DnsAccountChallenge enables the dns-account-01 challenge type which allows
+	// concurrent domain validation by using unique DNS labels based on account URLs.
+	// This implements draft-ietf-acme-dns-account-label-00.
+	DnsAccountChallenge bool
 }
 
 var fMu = new(sync.RWMutex)
