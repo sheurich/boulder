@@ -25,6 +25,14 @@ func TLSALPNChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeTLSALPN01, token)
 }
 
+// DNSAccountChallenge01 constructs a dns-account-01 challenge.
+// This challenge type allows multiple independent ACME clients to perform
+// domain validation concurrently through account-specific subdomain prefixes.
+// It is defined in the IETF draft: https://www.ietf.org/archive/id/draft-ietf-acme-dns-account-label-00.txt
+func DNSAccountChallenge01(token string) Challenge {
+	return newChallenge(ChallengeTypeDNSAccount01, token)
+}
+
 // NewChallenge constructs a challenge of the given kind. It returns an
 // error if the challenge type is unrecognized.
 func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
@@ -35,6 +43,8 @@ func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
 		return DNSChallenge01(token), nil
 	case ChallengeTypeTLSALPN01:
 		return TLSALPNChallenge01(token), nil
+	case ChallengeTypeDNSAccount01:
+		return DNSAccountChallenge01(token), nil
 	default:
 		return Challenge{}, fmt.Errorf("unrecognized challenge type %q", kind)
 	}

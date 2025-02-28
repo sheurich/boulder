@@ -22,13 +22,15 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	}
-	if hostname == "_acme-challenge.good-dns01.com" {
+	if hostname == "_acme-challenge.good-dns01.com" ||
+		hostname == "_VRR7UUDRKLSHXB6L._acme-challenge.good-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
-	if hostname == "_acme-challenge.wrong-dns01.com" {
+	if hostname == "_acme-challenge.wrong-dns01.com" ||
+		hostname == "_VRR7UUDRKLSHXB6L._acme-challenge.wrong-dns01.com" {
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
 	}
 	if hostname == "_acme-challenge.wrong-many-dns01.com" {
@@ -44,7 +46,8 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
 	// empty-txts.com always returns zero TXT records
-	if hostname == "_acme-challenge.empty-txts.com" {
+	if hostname == "_acme-challenge.empty-txts.com" ||
+		hostname == "_VRR7UUDRKLSHXB6L._acme-challenge.empty-txts.com" {
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
