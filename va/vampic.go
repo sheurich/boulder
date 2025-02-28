@@ -280,6 +280,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
+		req.Authz.RegID,
 	)
 
 	// Stop the clock for local validation latency.

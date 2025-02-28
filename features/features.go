@@ -105,6 +105,13 @@ type Config struct {
 	// calling the new `IssueCertificate` instead of the old `IssuePrecertficate` /
 	// `IssueCertificateForPrecertificate` pair.
 	UnsplitIssuance bool
+
+	// DNSAccount01Challenge enables the dns-account-01 challenge type, which allows
+	// multiple independent ACME clients to perform domain validation concurrently
+	// through account-specific subdomain prefixes. This challenge type is defined in
+	// the IETF draft: https://www.ietf.org/archive/id/draft-ietf-acme-dns-account-label-00.txt
+	// and is disabled by default until fully tested and approved.
+	DNSAccount01Challenge bool
 }
 
 var fMu = new(sync.RWMutex)

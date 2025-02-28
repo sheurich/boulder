@@ -414,13 +414,15 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 }
 
 // validateChallenge simply passes through to the appropriate validation method
-// depending on the challenge type.
+// depending on the challenge type. The accountURIID parameter is used for dns-account-01
+// challenges to construct the account URI needed for validation.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
+	accountURIID int64,
 ) ([]core.ValidationRecord, error) {
 	// Strip a (potential) leading wildcard token from the identifier.
 	ident.Value = strings.TrimPrefix(ident.Value, "*.")
@@ -432,6 +434,11 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSAccount01:
+		// For dns-account-01, we need to determine the account URI
+		// Use the first account URI prefix (which should be the only one in most deployments)
+		accountURI := fmt.Sprintf("%s%d", va.accountURIPrefixes[0], accountURIID)
+		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -646,7 +653,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 	// Do primary domain control validation. Any kind of error returned by this
 	// counts as a validation error, and will be converted into an appropriate
 	// probs.ProblemDetails by the calling function.
-	records, err := va.validateChallenge(ctx, ident, kind, token, keyAuthorization)
+	records, err := va.validateChallenge(ctx, ident, kind, token, keyAuthorization, regid)
 	if err != nil {
 		return records, err
 	}

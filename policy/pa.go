@@ -18,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -527,11 +528,18 @@ func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]c
 
 	// Return all challenge types we support for non-wildcard DNS identifiers.
 	if ident.Type == identifier.TypeDNS {
-		return []core.AcmeChallenge{
+		challenges := []core.AcmeChallenge{
 			core.ChallengeTypeHTTP01,
 			core.ChallengeTypeDNS01,
 			core.ChallengeTypeTLSALPN01,
-		}, nil
+		}
+
+		// Add dns-account-01 challenge type if the feature flag is enabled
+		if features.Get().DNSAccount01Challenge {
+			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+		}
+
+		return challenges, nil
 	}
 
 	// Otherwise return an error because we don't support any challenges for this
