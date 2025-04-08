@@ -2,6 +2,8 @@ package va
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base32"
 	"fmt"
 	"net"
 	"net/netip"
@@ -11,7 +13,9 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -123,6 +127,80 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization)
 
 	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestCalculateDNSAccount01Label(t *testing.T) {
+	va, _ := setup(nil, "", nil, nil)
+
+	testCases := []struct {
+		accountURL string
+		expected   string
+	}{
+		{
+			accountURL: "https://example.com/acme/acct/ExampleAccount",
+			expected:   "UJMMOVF2VN55TGYE", // This matches the example in draft-ietf-acme-dns-account-label-00
+		},
+		{
+			accountURL: "http://localhost:4000/acme/acct/1",
+			expected:   "VKBGBQFHR6YV2ASD", // This is the actual result of our implementation
+		},
+		{
+			accountURL: "https://extremely-long-domain-name-for-testing-purposes-that-exceeds-normal-length.example.com/acme/account/with/long/path/12345",
+			expected:   calculateExpectedLabel("https://extremely-long-domain-name-for-testing-purposes-that-exceeds-normal-length.example.com/acme/account/with/long/path/12345"),
+		},
+		{
+			accountURL: "https://example.com/acme/acct/User+Name@example.com",
+			expected:   calculateExpectedLabel("https://example.com/acme/acct/User+Name@example.com"),
+		},
+		{
+			accountURL: "",
+			expected:   calculateExpectedLabel(""),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.accountURL, func(t *testing.T) {
+			result := va.CalculateDNSAccount01Label(tc.accountURL)
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q for account URL %q", tc.expected, result, tc.accountURL)
+			}
+		})
+	}
+}
+
+func calculateExpectedLabel(accountURL string) string {
+	h := sha256.Sum256([]byte(accountURL))
+	return base32.StdEncoding.EncodeToString(h[:10])
+}
+
+func TestValidateDNSAccount01(t *testing.T) {
+	mockDNS := &bdns.MockClient{Log: blog.NewMock()}
+	va, _ := setup(nil, "", nil, mockDNS)
+
+	config := features.Config{DNSAccount01Enabled: true}
+	features.Set(config)
+	defer features.Reset()
+
+	accountURL := "https://example.com/acme/acct/ExampleAccount"
+	domain := "good-dns01.com"
+
+	config = features.Config{DNSAccount01Enabled: false}
+	features.Set(config)
+
+	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
+	test.AssertError(t, err, "Should be invalid when feature is disabled")
+	test.AssertEquals(t, err.Error(), "dns-account-01 challenge type disabled")
+
+	config = features.Config{DNSAccount01Enabled: true}
+	features.Set(config)
+
+	_, err = va.validateDNSAccount01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization, accountURL)
+	test.AssertError(t, err, "Should be invalid with IP identifier")
+	test.AssertEquals(t, err.Error(), "Identifier type for DNS challenge was not DNS")
+
+	_, err = va.validateDNSAccount01(ctx, identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization, accountURL)
+	test.AssertError(t, err, "Should be invalid with wrong DNS record")
+
 }
 
 func TestAvailableAddresses(t *testing.T) {

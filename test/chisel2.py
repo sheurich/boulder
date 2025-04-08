@@ -126,6 +126,8 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_dns_challenges(client, authzs)
     elif chall_type == "tls-alpn-01":
         cleanup = do_tlsalpn_challenges(client, authzs)
+    elif chall_type == "dns-account-01":
+        cleanup = do_dns_account_01_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
@@ -189,6 +191,33 @@ def do_tlsalpn_challenges(client, authzs):
     def cleanup():
         for host in cleanup_hosts:
             challSrv.remove_tlsalpn01_response(host)
+    return cleanup
+
+def do_dns_account_01_challenges(client, authzs):
+    """Set up DNS-ACCOUNT-01 challenge responses for the given authorizations."""
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.DNS01)  # Using DNS01 since python-acme doesn't have DNS-ACCOUNT-01 yet
+        
+        account_url = client.net.account.uri
+        
+        import hashlib
+        import base64
+        hash_bytes = hashlib.sha256(account_url.encode('utf-8')).digest()
+        label = base64.b32encode(hash_bytes[0:10]).decode('utf-8')
+        
+        domain = a.body.identifier.value
+        validation_name = f"_{label}._acme-challenge.{domain}"
+        
+        validation = c.validation(client.net.key)
+        
+        cleanup_hosts.append(validation_name)
+        challSrv.add_dns01_response(validation_name, validation)
+        client.answer_challenge(c, c.response(client.net.key))
+    
+    def cleanup():
+        for host in cleanup_hosts:
+            challSrv.remove_dns01_response(host)
     return cleanup
 
 def expect_problem(problem_type, func):

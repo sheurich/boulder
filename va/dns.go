@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 )
 
@@ -46,6 +48,62 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 		}
 	}
 	return
+}
+
+func (va *ValidationAuthorityImpl) CalculateDNSAccount01Label(accountURL string) string {
+	h := sha256.Sum256([]byte(accountURL))
+	return base32.StdEncoding.EncodeToString(h[:10])
+}
+
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURL string) ([]core.ValidationRecord, error) {
+	if !features.Get().DNSAccount01Enabled {
+		return nil, berrors.UnauthorizedError("dns-account-01 challenge type disabled")
+	}
+
+	if ident.Type != identifier.TypeDNS {
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS challenge was not DNS")
+	}
+
+	// Compute the digest of the key authorization file
+	h := sha256.New()
+	h.Write([]byte(keyAuthorization))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	label := va.CalculateDNSAccount01Label(accountURL)
+	challengeSubdomain := fmt.Sprintf("_%s._acme-challenge.%s", label, ident.Value)
+
+	// Look for the required record in the DNS
+	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	if err != nil {
+		va.log.Warningf("Error looking up TXT record for dns-account-01 challenge: %v", err)
+		return nil, berrors.DNSError("Error looking up TXT records for %s: %s", challengeSubdomain, err)
+	}
+
+	// If there weren't any TXT records return a distinct error message to allow
+	// troubleshooters to differentiate between no TXT records and
+	// invalid/incorrect TXT records.
+	if len(txts) == 0 {
+		return nil, berrors.UnauthorizedError("No TXT record found at %s", challengeSubdomain)
+	}
+
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+			// Successful challenge validation
+			return []core.ValidationRecord{{DnsName: ident.Value, ResolverAddrs: resolvers}}, nil
+		}
+	}
+
+	invalidRecord := txts[0]
+	if len(invalidRecord) > 100 {
+		invalidRecord = invalidRecord[0:100] + "..."
+	}
+	var andMore string
+	if len(txts) > 1 {
+		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
+	}
+	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
