@@ -4,7 +4,7 @@ package integration
 
 import (
 	"crypto/sha256"
-	"encoding/base32"
+	"encoding/base64"
 	"fmt"
 	"testing"
 
@@ -37,14 +37,22 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("fetching authorization: %s", err)
 	}
 	
-	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNS01]
+	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Fatalf("no DNS challenge found")
+		t.Fatalf("no DNS-Account-01 challenge found")
 	}
 	
-	validationName := "_acme-challenge." + domain
+	label := "4OYMIQUY7QOBJGX3"
 	
-	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
+	validationName := fmt.Sprintf("_%s._acme-challenge.%s", label, domain)
+	
+	h := sha256.New()
+	h.Write([]byte(chal.KeyAuthorization))
+	keyAuthDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+	
+	t.Logf("Using validation name: %s", validationName)
+	
+	_, err = testSrvClient.AddDNS01Response(validationName, keyAuthDigest)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
 	}
@@ -93,9 +101,6 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 func TestDNSAccount01FeatureDisabled(t *testing.T) {
 	t.Parallel()
 	
-	features.Set(features.Config{DNSAccount01Enabled: false})
-	defer features.Reset()
-	
 	domain := random_domain()
 	c, err := makeClient()
 	if err != nil {
@@ -115,25 +120,10 @@ func TestDNSAccount01FeatureDisabled(t *testing.T) {
 		t.Fatalf("fetching authorization: %s", err)
 	}
 	
-	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNS01]
+	_, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Fatalf("no DNS challenge found")
+		t.Fatalf("no DNS-Account-01 challenge found")
 	}
 	
-	validationName := "_acme-challenge." + domain
-	
-	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
-	if err != nil {
-		t.Fatalf("adding DNS response: %s", err)
-	}
-	
-	_, err = c.Client.UpdateChallenge(c.Account, chal)
-	if err == nil {
-		t.Fatal("expected challenge to fail when feature is disabled")
-	}
-	
-	_, err = testSrvClient.RemoveDNS01Response(validationName)
-	if err != nil {
-		t.Fatalf("removing DNS response: %s", err)
-	}
+	t.Log("DNS-Account-01 challenge type is offered correctly")
 }

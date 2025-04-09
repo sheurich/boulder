@@ -149,7 +149,8 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true
+			"NoPendingAuthzReuse": true,
+			"DNSAccount01Enabled": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
