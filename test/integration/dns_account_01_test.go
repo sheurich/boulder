@@ -3,8 +3,6 @@
 package integration
 
 import (
-	"crypto/sha256"
-	"encoding/base32"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
