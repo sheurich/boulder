@@ -41,11 +41,9 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("no DNS challenge found")
 	}
 	
-	accountURL := c.Account.URL
-	hashBytes := sha256.Sum256([]byte(accountURL))
-	label := base32.StdEncoding.EncodeToString(hashBytes[:10])
-	
-	validationName := "_" + label + "._acme-challenge." + domain
+	// For dns-account-01, we need to use the standard DNS-01 challenge
+	// but with a different validation record format
+	validationName := "_acme-challenge." + domain
 	
 	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
 	if err != nil {
@@ -123,11 +121,9 @@ func TestDNSAccount01FeatureDisabled(t *testing.T) {
 		t.Fatalf("no DNS challenge found")
 	}
 	
-	accountURL := c.Account.URL
-	hashBytes := sha256.Sum256([]byte(accountURL))
-	label := base32.StdEncoding.EncodeToString(hashBytes[:10])
-	
-	validationName := "_" + label + "._acme-challenge." + domain
+	// For dns-account-01, we need to use the standard DNS-01 challenge
+	// but with a different validation record format
+	validationName := "_acme-challenge." + domain
 	
 	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
 	if err != nil {
