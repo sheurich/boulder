@@ -1,18 +1,14 @@
-
+//go:build integration
 
 package integration
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
 	"github.com/letsencrypt/boulder/features"
-	challTestSrvClient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 )
 
 func TestDNSAccount01HappyPath(t *testing.T) {
@@ -51,7 +47,7 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 	
 	validationName := "_" + label + "._acme-challenge." + domain
 	
-	_, err = challTestSrvClient.NewClient("").AddDNS01Response(validationName, chal.KeyAuthorization)
+	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
 	}
@@ -61,22 +57,17 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("updating challenge: %s", err)
 	}
 	
-	_, err = challTestSrvClient.NewClient("").RemoveDNS01Response(validationName)
+	_, err = testSrvClient.RemoveDNS01Response(validationName)
 	if err != nil {
 		t.Fatalf("removing DNS response: %s", err)
 	}
 	
-	csrKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generating key: %s", err)
-	}
-	
-	csr, err := makeCSR(csrKey, idents, true)
+	csrKey, err := makeCSR(nil, idents, true)
 	if err != nil {
 		t.Fatalf("making CSR: %s", err)
 	}
 	
-	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
+	order, err = c.Client.FinalizeOrder(c.Account, order, csrKey)
 	if err != nil {
 		t.Fatalf("finalizing order: %s", err)
 	}
@@ -138,7 +129,7 @@ func TestDNSAccount01FeatureDisabled(t *testing.T) {
 	
 	validationName := "_" + label + "._acme-challenge." + domain
 	
-	_, err = challTestSrvClient.NewClient("").AddDNS01Response(validationName, chal.KeyAuthorization)
+	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
 	}
@@ -148,7 +139,7 @@ func TestDNSAccount01FeatureDisabled(t *testing.T) {
 		t.Fatal("expected challenge to fail when feature is disabled")
 	}
 	
-	_, err = challTestSrvClient.NewClient("").RemoveDNS01Response(validationName)
+	_, err = testSrvClient.RemoveDNS01Response(validationName)
 	if err != nil {
 		t.Fatalf("removing DNS response: %s", err)
 	}
