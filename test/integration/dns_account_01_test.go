@@ -3,6 +3,9 @@
 package integration
 
 import (
+	"crypto/sha256"
+	"encoding/base32"
+	"fmt"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -39,8 +42,6 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("no DNS challenge found")
 	}
 	
-	// For dns-account-01, we need to use the standard DNS-01 challenge
-	// but with a different validation record format
 	validationName := "_acme-challenge." + domain
 	
 	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
@@ -119,8 +120,6 @@ func TestDNSAccount01FeatureDisabled(t *testing.T) {
 		t.Fatalf("no DNS challenge found")
 	}
 	
-	// For dns-account-01, we need to use the standard DNS-01 challenge
-	// but with a different validation record format
 	validationName := "_acme-challenge." + domain
 	
 	_, err = testSrvClient.AddDNS01Response(validationName, chal.KeyAuthorization)
