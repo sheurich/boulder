@@ -89,6 +89,8 @@ type Config struct {
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
 	StoreARIReplacesInOrders bool
+
+	DNSAccount01Enabled bool
 }
 
 var fMu = new(sync.RWMutex)

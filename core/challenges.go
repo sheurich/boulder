@@ -25,6 +25,10 @@ func TLSALPNChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeTLSALPN01, token)
 }
 
+func DNSAccount01Challenge(token string) Challenge {
+	return newChallenge(ChallengeTypeDNSAccount01, token)
+}
+
 // NewChallenge constructs a challenge of the given kind. It returns an
 // error if the challenge type is unrecognized.
 func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
@@ -35,6 +39,8 @@ func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
 		return DNSChallenge01(token), nil
 	case ChallengeTypeTLSALPN01:
 		return TLSALPNChallenge01(token), nil
+	case ChallengeTypeDNSAccount01:
+		return DNSAccount01Challenge(token), nil
 	default:
 		return Challenge{}, fmt.Errorf("unrecognized challenge type %q", kind)
 	}

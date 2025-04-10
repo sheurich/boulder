@@ -399,6 +399,50 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 	return resp, nil
 }
 
+// AddDNSAccount01Response adds an ACME DNS-ACCOUNT-01 challenge
+// response for the provided host and label combination to the
+// challenge test server's DNS interfaces. The value is hashed and
+// base64-encoded using RawURLEncoding, and served for TXT queries to
+// _<label>._acme-challenge.<host>. Any failure returns an error
+// that includes both the relevant operation and the payload.
+func (c *Client) AddDNSAccount01Response(label, host, value string) ([]byte, error) {
+	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	h := sha256.Sum256([]byte(value))
+	value = base64.RawURLEncoding.EncodeToString(h[:])
+	payload := map[string]string{"host": host, "value": value}
+	resp, err := c.postURL(addTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while adding DNS-01 response for host %q, val %q (payload: %v): %w",
+			host, value, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+// RemoveDNSAccount01Response removes an ACME DNS-ACCOUNT-01 challenge
+// response for the provided host and label combination from the
+// challenge test server's DNS interfaces. Any failure returns an error
+// that includes both the relevant operation and the payload.
+func (c *Client) RemoveDNSAccount01Response(label, host string) ([]byte, error) {
+	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	payload := map[string]string{"host": host}
+	resp, err := c.postURL(delTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while removing DNS-01 response for host %q (payload: %v): %w",
+			host, payload, err,
+		)
+	}
+	return resp, nil
+}
+
 // DNSRequest is a single DNS request in the request history.
 type DNSRequest struct {
 	Question struct {
