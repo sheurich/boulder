@@ -688,6 +688,10 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	if err != nil {
 		return nil, errors.New("challenge failed to deserialize")
 	}
+	
+	if chall.Type == core.ChallengeTypeDNSAccount01 && req.Authz.AccountURI == "" {
+		return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
+	}
 
 	err = chall.CheckPending()
 	if err != nil {
