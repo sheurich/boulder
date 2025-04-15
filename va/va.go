@@ -3,7 +3,6 @@ package va
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -418,11 +417,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	keyAuthorization string,
 	accountURL string,
 ) ([]core.ValidationRecord, error) {
-	va.log.Infof("validateChallenge called with challenge type %s", kind)
-	if accountURL != "" {
-		urlHash := sha256.Sum256([]byte(accountURL))
-		va.log.Infof("Account URL hash: %x", urlHash[:5])
-	}
+	urlHash := sha256.Sum256([]byte(accountURL))
+	va.log.Infof("validateChallenge called with challenge type %s and account URL hash: %x", kind, urlHash[:5])
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
@@ -691,20 +687,6 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	chall, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
 		return nil, errors.New("challenge failed to deserialize")
-	}
-
-	if chall.Type == core.ChallengeTypeDNSAccount01 {
-		if req.Authz.AccountURI == "" {
-			return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
-		}
-
-		parsedURL, err := url.Parse(req.Authz.AccountURI)
-		if err != nil {
-			return nil, berrors.MalformedError("invalid account URL syntax: %s", err)
-		}
-		if parsedURL.Scheme == "" || parsedURL.Host == "" {
-			return nil, berrors.MalformedError("account URL must be an absolute URL")
-		}
 	}
 
 	err = chall.CheckPending()
