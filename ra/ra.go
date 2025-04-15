@@ -1547,11 +1547,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if req == nil || req.Challenge == nil {
+	if req == nil {
 		return nil, errIncompleteGRPCRequest
 	}
 	
-	if req.Challenge.Type == string(core.ChallengeTypeDNSAccount01) && req.AccountURI == "" {
+	// Check if this is a DNS-ACCOUNT-01 challenge and validate accountURI
+	if req.Authz != nil && 
+	   int(req.ChallengeIndex) < len(req.Authz.Challenges) && 
+	   req.Authz.Challenges[req.ChallengeIndex].Type == string(core.ChallengeTypeDNSAccount01) && 
+	   req.AccountURI == "" {
 		return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
 	}
 

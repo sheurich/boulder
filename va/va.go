@@ -3,6 +3,7 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -689,8 +690,18 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, errors.New("challenge failed to deserialize")
 	}
 	
-	if chall.Type == core.ChallengeTypeDNSAccount01 && req.Authz.AccountURI == "" {
-		return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
+	if chall.Type == core.ChallengeTypeDNSAccount01 {
+		if req.Authz.AccountURI == "" {
+			return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
+		}
+		
+		parsedURL, err := url.Parse(req.Authz.AccountURI)
+		if err != nil {
+			return nil, berrors.MalformedError("invalid account URL syntax: %w", err)
+		}
+		if parsedURL.Scheme == "" || parsedURL.Host == "" {
+			return nil, berrors.MalformedError("account URL must be an absolute URL")
+		}
 	}
 
 	err = chall.CheckPending()
