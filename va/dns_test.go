@@ -273,28 +273,17 @@ func TestValidateDNSAccount01(t *testing.T) {
 		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
 		test.AssertNotError(t, err, "Should be valid with correct account URL and DNS record")
 	})
+	
+	t.Run("Feature Flag Disabled", func(t *testing.T) {
+		features.Set(features.Config{DNSAccount01Enabled: false})
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid when feature flag is disabled")
+		test.AssertEquals(t, err.Error(), "dns-account-01 validation is disabled")
+		features.Set(features.Config{DNSAccount01Enabled: true})
+	})
 }
 
-func TestValidateDNSAccount01FeatureFlagDisabled(t *testing.T) {
-	mockDNS := &bdns.MockClient{Log: blog.NewMock()}
-	fc := clock.NewFake()
-	fc.Set(time.Now())
 
-	va, _ := setup(nil, "", nil, mockDNS)
-	va.dnsClient = mockDNS
-
-	features.Set(features.Config{DNSAccount01Enabled: false})
-	defer features.Reset()
-
-	accountURL := "https://example.com/acme/acct/ExampleAccount"
-	domain := "good-dns01.com"
-	expectedKeyAuthorization = "expectedKeyAuthorization"
-
-	// Test that validation fails when the feature flag is disabled
-	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
-	test.AssertError(t, err, "Should be invalid when feature flag is disabled")
-	test.AssertEquals(t, err.Error(), "dns-account-01 validation is disabled")
-}
 
 func TestAvailableAddresses(t *testing.T) {
 	v6a := net.ParseIP("::1")
