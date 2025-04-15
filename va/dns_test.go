@@ -283,8 +283,6 @@ func TestValidateDNSAccount01(t *testing.T) {
 	})
 }
 
-
-
 func TestAvailableAddresses(t *testing.T) {
 	v6a := net.ParseIP("::1")
 	v6b := net.ParseIP("2001:db8::2:1") // 2001:DB8 is reserved for docs (RFC 3849)

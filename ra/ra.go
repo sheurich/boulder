@@ -1550,7 +1550,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if req == nil {
 		return nil, errIncompleteGRPCRequest
 	}
-	
+
 	// Check if this is a DNS-ACCOUNT-01 challenge and validate accountURI
 	if req.Authz != nil &&
 		int(req.ChallengeIndex) < len(req.Authz.Challenges) &&
