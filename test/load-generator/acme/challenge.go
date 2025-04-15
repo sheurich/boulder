@@ -21,9 +21,10 @@ const (
 	RandomChallengeStrategy = "RANDOM"
 	// The following challenge strategies will always pick the named challenge
 	// type or return an error if there isn't a challenge of that type to pick.
-	HTTP01ChallengeStrategy    = "HTTP-01"
-	DNS01ChallengeStrategy     = "DNS-01"
-	TLSALPN01ChallengeStrategy = "TLS-ALPN-01"
+	HTTP01ChallengeStrategy       = "HTTP-01"
+	DNS01ChallengeStrategy        = "DNS-01"
+	TLSALPN01ChallengeStrategy    = "TLS-ALPN-01"
+	DNSAccount01ChallengeStrategy = "DNS-ACCOUNT-01"
 )
 
 // NewChallengeStrategy returns the ChallengeStrategy for the given
@@ -39,6 +40,8 @@ func NewChallengeStrategy(rawName string) (ChallengeStrategy, error) {
 		preferredType = core.ChallengeTypeDNS01
 	case TLSALPN01ChallengeStrategy:
 		preferredType = core.ChallengeTypeTLSALPN01
+	case DNSAccount01ChallengeStrategy:
+		preferredType = core.ChallengeTypeDNSAccount01
 	default:
 		return nil, fmt.Errorf("ChallengeStrategy %q unknown", name)
 	}

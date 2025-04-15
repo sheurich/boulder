@@ -95,7 +95,8 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, id
 					ChallengeTypes: []string{
 						string(core.ChallengeTypeHTTP01),
 						string(core.ChallengeTypeDNS01),
-						string(core.ChallengeTypeTLSALPN01)},
+						string(core.ChallengeTypeTLSALPN01),
+						string(core.ChallengeTypeDNSAccount01)},
 					Token: core.NewToken(),
 				},
 			},
@@ -136,14 +137,14 @@ func dnsChallIdx(t *testing.T, challenges []*corepb.Challenge) int64 {
 	var challIdx int64
 	var set bool
 	for i, ch := range challenges {
-		if core.AcmeChallenge(ch.Type) == core.ChallengeTypeDNS01 {
+		if core.AcmeChallenge(ch.Type) == core.ChallengeTypeDNS01 || core.AcmeChallenge(ch.Type) == core.ChallengeTypeDNSAccount01 {
 			challIdx = int64(i)
 			set = true
 			break
 		}
 	}
 	if !set {
-		t.Errorf("dnsChallIdx didn't find challenge of type DNS-01")
+		t.Errorf("dnsChallIdx didn't find challenge of type DNS-01 or DNS-ACCOUNT-01")
 	}
 	return challIdx
 }
