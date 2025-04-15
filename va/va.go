@@ -418,8 +418,11 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	keyAuthorization string,
 	accountURL string,
 ) ([]core.ValidationRecord, error) {
-	urlHash := sha256.Sum256([]byte(accountURL))
-	va.log.Infof("validateChallenge called with challenge type %s and account URL hash: %x", kind, urlHash[:5])
+	va.log.Infof("validateChallenge called with challenge type %s", kind)
+	if accountURL != "" {
+		urlHash := sha256.Sum256([]byte(accountURL))
+		va.log.Infof("Account URL hash: %x", urlHash[:5])
+	}
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
@@ -689,7 +692,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	if err != nil {
 		return nil, errors.New("challenge failed to deserialize")
 	}
-
+	
 	if chall.Type == core.ChallengeTypeDNSAccount01 {
 		if req.Authz.AccountURI == "" {
 			return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
