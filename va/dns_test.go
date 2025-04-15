@@ -273,7 +273,7 @@ func TestValidateDNSAccount01(t *testing.T) {
 		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
 		test.AssertNotError(t, err, "Should be valid with correct account URL and DNS record")
 	})
-	
+
 	t.Run("Feature Flag Disabled", func(t *testing.T) {
 		features.Set(features.Config{DNSAccount01Enabled: false})
 		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)

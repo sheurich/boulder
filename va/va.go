@@ -694,10 +694,10 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		if req.Authz.AccountURI == "" {
 			return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
 		}
-		
+
 		parsedURL, err := url.Parse(req.Authz.AccountURI)
 		if err != nil {
-			return nil, berrors.MalformedError("invalid account URL syntax: %w", err)
+			return nil, berrors.MalformedError("invalid account URL syntax: %s", err)
 		}
 		if parsedURL.Scheme == "" || parsedURL.Host == "" {
 			return nil, berrors.MalformedError("account URL must be an absolute URL")

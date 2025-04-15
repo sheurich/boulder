@@ -1552,10 +1552,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 	
 	// Check if this is a DNS-ACCOUNT-01 challenge and validate accountURI
-	if req.Authz != nil && 
-	   int(req.ChallengeIndex) < len(req.Authz.Challenges) && 
-	   req.Authz.Challenges[req.ChallengeIndex].Type == string(core.ChallengeTypeDNSAccount01) && 
-	   req.AccountURI == "" {
+	if req.Authz != nil &&
+		int(req.ChallengeIndex) < len(req.Authz.Challenges) &&
+		req.Authz.Challenges[req.ChallengeIndex].Type == string(core.ChallengeTypeDNSAccount01) &&
+		req.AccountURI == "" {
 		return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
 	}
 
