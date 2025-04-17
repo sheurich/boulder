@@ -11,7 +11,9 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -124,6 +126,145 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization)
 
 	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+// Expected labels for the test cases are calculated using
+// https://github.com/aaomidi/draft-ietf-acme-scoped-dns-challenges/blob/d7d9770d473e47da445ea9dd96c7f79672341c8c/examples/label.sh
+func TestCalculateDNSAccount01Label(t *testing.T) {
+	va, _ := setup(nil, "", nil, nil)
+
+	testCases := []struct {
+		name        string
+		accountURL  string
+		expected    string
+		description string
+	}{
+		{
+			name:        "RFC Example",
+			accountURL:  "https://example.com/acme/acct/ExampleAccount",
+			expected:    "_ujmmovf2vn55tgye",
+			description: "This matches the example in draft-ietf-acme-dns-account-label-00",
+		},
+		{
+			name:        "Local Development",
+			accountURL:  "https://localhost:4000/acme/acct/1",
+			expected:    "_us5lsqqubowx37ct",
+			description: "Common local development URL format",
+		},
+		{
+			name:        "Production URL",
+			accountURL:  "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
+			expected:    "_lvrajhh53e27yh7f",
+			description: "Let's Encrypt production URL format",
+		},
+		{
+			name:        "Long URL",
+			accountURL:  "https://extremely-long-domain-name-for-testing-purposes-that-exceeds-normal-length.example.com/acme/account/with/long/path/12345",
+			expected:    "_7e32ve5ka75ittru",
+			description: "Extremely long URL to test hash truncation",
+		},
+		{
+			name:        "URL with Special Characters",
+			accountURL:  "https://example.com/acme/acct/User+Name@example.com",
+			expected:    "_qlp75edvqankci3c",
+			description: "URL with special characters that need encoding",
+		},
+		{
+			name:        "URL with Unicode",
+			accountURL:  "https://例子.测试/acme/acct/12345",
+			expected:    "_idm5i43k6wemcnem",
+			description: "URL with Unicode characters",
+		},
+		{
+			name:        "URL with Query Parameters",
+			accountURL:  "https://example.com/acme/acct/12345?param=value&other=thing",
+			expected:    "_a4tgldxnu6oq5fgs",
+			description: "URL with query parameters",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := va.calculateDNSAccount01Label(tc.accountURL)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q for account URL %q (%s)",
+					tc.expected, result, tc.accountURL, tc.description)
+			}
+		})
+	}
+}
+
+func TestValidateDNSAccount01(t *testing.T) {
+	mockDNS := &bdns.MockClient{Log: blog.NewMock()}
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	va, _ := setup(nil, "", nil, mockDNS)
+	va.dnsClient = mockDNS
+
+	features.Set(features.Config{DNSAccount01Enabled: true})
+	defer features.Reset()
+
+	accountURL := "https://example.com/acme/acct/ExampleAccount"
+	wrongAccountURL := "https://example.com/acme/acct/WrongAccount"
+	domain := "good-dns01.com"
+	wrongDomain := "wrong-dns01.com"
+	timeoutDomain := "timeout.com"
+	servfailDomain := "servfail.com"
+	multipleNoneMatchDomain := "multiple-none-match.com"
+	multipleOneMatchDomain := "multiple-one-match.com"
+	ipIdentifier := identifier.NewIP(netip.MustParseAddr("127.0.0.1"))
+
+	expectedKeyAuthorization = "expectedKeyAuthorization"
+
+	t.Run("Wrong Identifier Type", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, ipIdentifier, expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with IP identifier")
+		test.AssertEquals(t, err.Error(), "Identifier type for DNS challenge was not DNS")
+	})
+
+	t.Run("Wrong DNS Record", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(wrongDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with wrong DNS record")
+		test.AssertContains(t, err.Error(), "Incorrect TXT record")
+	})
+
+	t.Run("Wrong Account URL", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, wrongAccountURL)
+		test.AssertError(t, err, "Should be invalid with wrong account URL")
+		test.AssertContains(t, err.Error(), "Incorrect TXT record")
+	})
+
+	t.Run("DNS Timeout", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(timeoutDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with DNS timeout")
+		test.AssertContains(t, err.Error(), "so sloooow")
+	})
+
+	t.Run("DNS Server Failure", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(servfailDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with DNS server failure")
+		test.AssertContains(t, err.Error(), "SERVFAIL")
+	})
+
+	t.Run("Multiple TXT Records None Match", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(multipleNoneMatchDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with multiple non-matching TXT records")
+		test.AssertContains(t, err.Error(), "Incorrect TXT record")
+	})
+
+	t.Run("Multiple TXT Records One Matches", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(multipleOneMatchDomain), expectedKeyAuthorization, accountURL)
+		test.AssertNotError(t, err, "Should be valid with one matching TXT record among multiple")
+	})
+
+	t.Run("Valid Account URL and DNS Record", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, accountURL)
+		test.AssertNotError(t, err, "Should be valid with correct account URL and DNS record")
+	})
 }
 
 func TestAvailableAddresses(t *testing.T) {
