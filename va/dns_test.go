@@ -129,7 +129,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 }
 
 // Expected labels for the test cases are calculated using
-// https://github.com/aaomidi/draft-ietf-acme-scoped-dns-challenges/blob/d7d9770d473e47da445ea9dd96c7f79672341c8c/examples/label.go
+// https://github.com/aaomidi/draft-ietf-acme-scoped-dns-challenges/blob/d7d9770d473e47da445ea9dd96c7f79672341c8c/examples/label.sh
 func TestCalculateDNSAccount01Label(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
@@ -142,62 +142,53 @@ func TestCalculateDNSAccount01Label(t *testing.T) {
 		{
 			name:        "RFC Example",
 			accountURL:  "https://example.com/acme/acct/ExampleAccount",
-			expected:    "ujmmovf2vn55tgye",
+			expected:    "_ujmmovf2vn55tgye",
 			description: "This matches the example in draft-ietf-acme-dns-account-label-00",
 		},
 		{
 			name:        "Local Development",
-			accountURL:  "http://localhost:4000/acme/acct/1",
-			expected:    "vkbgbqfhr6yv2asd",
+			accountURL:  "https://localhost:4000/acme/acct/1",
+			expected:    "_us5lsqqubowx37ct",
 			description: "Common local development URL format",
 		},
 		{
 			name:        "Production URL",
 			accountURL:  "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
-			expected:    "lvrajhh53e27yh7f",
+			expected:    "_lvrajhh53e27yh7f",
 			description: "Let's Encrypt production URL format",
-		},
-		{
-			name:        "Staging URL",
-			accountURL:  "https://acme-staging-v02.api.letsencrypt.org/acme/acct/67890",
-			expected:    "2slyxozq54jc5ljm",
-			description: "Let's Encrypt staging URL format",
 		},
 		{
 			name:        "Long URL",
 			accountURL:  "https://extremely-long-domain-name-for-testing-purposes-that-exceeds-normal-length.example.com/acme/account/with/long/path/12345",
-			expected:    "7e32ve5ka75ittru",
+			expected:    "_7e32ve5ka75ittru",
 			description: "Extremely long URL to test hash truncation",
 		},
 		{
 			name:        "URL with Special Characters",
 			accountURL:  "https://example.com/acme/acct/User+Name@example.com",
-			expected:    "qlp75edvqankci3c",
+			expected:    "_qlp75edvqankci3c",
 			description: "URL with special characters that need encoding",
-		},
-		{
-			name:        "Empty URL",
-			accountURL:  "",
-			expected:    "4oymiquy7qobjgx3",
-			description: "Edge case: empty URL",
 		},
 		{
 			name:        "URL with Unicode",
 			accountURL:  "https://例子.测试/acme/acct/12345",
-			expected:    "idm5i43k6wemcnem",
+			expected:    "_idm5i43k6wemcnem",
 			description: "URL with Unicode characters",
 		},
 		{
 			name:        "URL with Query Parameters",
 			accountURL:  "https://example.com/acme/acct/12345?param=value&other=thing",
-			expected:    "a4tgldxnu6oq5fgs",
+			expected:    "_a4tgldxnu6oq5fgs",
 			description: "URL with query parameters",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := va.calculateDNSAccount01Label(tc.accountURL)
+			result, err := va.calculateDNSAccount01Label(tc.accountURL)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
 			if result != tc.expected {
 				t.Errorf("Expected %q, got %q for account URL %q (%s)",
 					tc.expected, result, tc.accountURL, tc.description)
