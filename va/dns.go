@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -61,12 +62,39 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 // 1. Taking the SHA-256 hash of the account URI
 // 2. Using the first 10 bytes of the hash
 // 3. Encoding those bytes using standard base32 encoding
-func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURL string) string {
-	va.log.Debugf("Calculating DNS-ACCOUNT-01 label for account URL: %s", accountURL)
+// 4. Prepending '_' (underscore)
+//
+// This function validates that the accountURL is non-empty, syntactically valid,
+// and uses the HTTPS scheme before calculation. It returns the calculated label
+// and a nil error on success, or an empty string and a non-nil error on failure.
+func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURL string) (string, error) {
+
+	// 1. Non-Nil / Non-Empty Check
+	if accountURL == "" {
+		err := fmt.Errorf("accountURL cannot be empty")
+		return "", err
+	}
+
+	// 2. URL Parsing Check
+	parsedURL, err := url.Parse(accountURL)
+	if err != nil {
+		// Wrap the original error for context
+		err = fmt.Errorf("invalid account URL syntax %q: %w", accountURL, err)
+		return "", err
+	}
+
+	// 3. Scheme Check
+	if parsedURL.Scheme != "https" {
+		err = fmt.Errorf("account URL %q must use https scheme, found: %q", accountURL, parsedURL.Scheme)
+		return "", err
+	}
+
 	h := sha256.Sum256([]byte(accountURL))
-	label := strings.ToLower(base32.StdEncoding.EncodeToString(h[:10]))
-	va.log.Debugf("Calculated DNS-ACCOUNT-01 label: %s", label)
-	return label
+	// Use ToLower as specified in the draft examples implicitly
+	label := fmt.Sprintf("_%s",
+		strings.ToLower(base32.StdEncoding.EncodeToString(h[:10])))
+
+	return label, nil
 }
 
 // validateDNSAccount01 validates the DNS-ACCOUNT-01 challenge type.
@@ -74,19 +102,19 @@ func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURL string)
 // This challenge type is similar to DNS-01 but uses a DNS record name that includes
 // a label derived from the account URI, binding the challenge to a specific ACME account.
 //
-// The DNS record format is: _{label}._acme-challenge.{domain}
+// The DNS record format is: {accountLabel}._acme-challenge.{domain}
 //
-// Where {label} is calculated using CalculateDNSAccount01Label and {domain} is the
-// domain being validated. The TXT record value is the same as for DNS-01: a base64url
-// encoded SHA-256 digest of the key authorization.
+// Where {accountLabel} is produced using calculateDNSAccount01Label and
+// {domain} is the domain being validated. The TXT record value is the same as
+// for DNS-01: a base64url encoded SHA-256 digest of the key authorization.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURL string) ([]core.ValidationRecord, error) {
 	if !features.Get().DNSAccount01Enabled {
 		return nil, berrors.UnauthorizedError("dns-account-01 challenge type disabled")
 	}
 
 	if ident.Type != identifier.TypeDNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, berrors.MalformedError("Identifier type for DNS challenge was not DNS")
+		va.log.Infof("Identifier type for DNS-ACCOUNT-01 challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
 	}
 
 	// Compute the digest of the key authorization file
@@ -95,10 +123,13 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Compute the DNS-ACCOUNT-01 record
-	label := va.calculateDNSAccount01Label(accountURL)
-	challengeSubdomain := fmt.Sprintf("_%s.%s.%s", label, core.DNSPrefix, ident.Value)
+	label, err := va.calculateDNSAccount01Label(accountURL)
+	if err != nil {
+		return nil, berrors.MalformedError("dns-account-01 label calculation failed: %s", err)
+	}
 
 	// Look for the required record in the DNS
+	challengeSubdomain := fmt.Sprintf("%s.%s.%s", label, core.DNSPrefix, ident.Value)
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
