@@ -199,7 +199,11 @@ func TestCalculateDNSAccount01Label(t *testing.T) {
 
 func TestValidateDNSAccount01(t *testing.T) {
 	mockDNS := &bdns.MockClient{Log: blog.NewMock()}
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
 	va, _ := setup(nil, "", nil, mockDNS)
+	va.dnsClient = mockDNS
 
 	features.Set(features.Config{DNSAccount01Enabled: true})
 	defer features.Reset()
@@ -208,7 +212,13 @@ func TestValidateDNSAccount01(t *testing.T) {
 	wrongAccountURL := "https://example.com/acme/acct/WrongAccount"
 	domain := "good-dns01.com"
 	wrongDomain := "wrong-dns01.com"
+	timeoutDomain := "timeout.com"
+	servfailDomain := "servfail.com"
+	multipleNoneMatchDomain := "multiple-none-match.com"
+	multipleOneMatchDomain := "multiple-one-match.com"
 	ipIdentifier := identifier.NewIP(netip.MustParseAddr("127.0.0.1"))
+
+	expectedKeyAuthorization = "expectedKeyAuthorization"
 
 	t.Run("Wrong Identifier Type", func(t *testing.T) {
 		_, err := va.validateDNSAccount01(ctx, ipIdentifier, expectedKeyAuthorization, accountURL)
@@ -226,6 +236,29 @@ func TestValidateDNSAccount01(t *testing.T) {
 		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(domain), expectedKeyAuthorization, wrongAccountURL)
 		test.AssertError(t, err, "Should be invalid with wrong account URL")
 		test.AssertContains(t, err.Error(), "Incorrect TXT record")
+	})
+
+	t.Run("DNS Timeout", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(timeoutDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with DNS timeout")
+		test.AssertContains(t, err.Error(), "so sloooow")
+	})
+
+	t.Run("DNS Server Failure", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(servfailDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with DNS server failure")
+		test.AssertContains(t, err.Error(), "SERVFAIL")
+	})
+
+	t.Run("Multiple TXT Records None Match", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(multipleNoneMatchDomain), expectedKeyAuthorization, accountURL)
+		test.AssertError(t, err, "Should be invalid with multiple non-matching TXT records")
+		test.AssertContains(t, err.Error(), "Incorrect TXT record")
+	})
+
+	t.Run("Multiple TXT Records One Matches", func(t *testing.T) {
+		_, err := va.validateDNSAccount01(ctx, identifier.NewDNS(multipleOneMatchDomain), expectedKeyAuthorization, accountURL)
+		test.AssertNotError(t, err, "Should be valid with one matching TXT record among multiple")
 	})
 
 	t.Run("Valid Account URL and DNS Record", func(t *testing.T) {

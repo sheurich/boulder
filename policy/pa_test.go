@@ -411,14 +411,14 @@ func TestChallengeTypesFor(t *testing.T) {
 			name:  "dns",
 			ident: identifier.NewDNS("example.com"),
 			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
+				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01, core.ChallengeTypeDNSAccount01,
 			},
 		},
 		{
 			name:  "wildcard",
 			ident: identifier.NewDNS("*.example.com"),
 			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeDNS01,
+				core.ChallengeTypeDNS01, core.ChallengeTypeDNSAccount01,
 			},
 		},
 		{
