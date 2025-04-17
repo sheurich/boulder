@@ -47,12 +47,31 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 	if hostname == "_acme-challenge.empty-txts.com" {
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
+
 	// "ujmmovf2vn55tgye" is the dns-account-01 label for "https://example.com/acme/acct/ExampleAccount"
 	if hostname == "_ujmmovf2vn55tgye._acme-challenge.good-dns01.com" {
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+		return []string{"xAQ-3TYeQTZTT5njgS0S76SaUjNQWWnxYWEIm6zXbkg"}, ResolverAddrs{"MockClient"}, nil
 	}
 	if hostname == "_ujmmovf2vn55tgye._acme-challenge.wrong-dns01.com" {
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.timeout.com" {
+		return nil, ResolverAddrs{"MockClient"}, makeTimeoutError()
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.servfail.com" {
+		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.multiple-none-match.com" {
+		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.multiple-one-match.com" {
+		return []string{"a", "xAQ-3TYeQTZTT5njgS0S76SaUjNQWWnxYWEIm6zXbkg", "c"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.empty-txts.com" {
+		return []string{}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.long-txt-dns01.com" {
+		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
 	}
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }

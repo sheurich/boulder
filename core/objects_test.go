@@ -59,7 +59,7 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []AcmeChallenge{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01}
+	types := []AcmeChallenge{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:   challengeType,
@@ -90,6 +90,8 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 	validHTTP01.Status = StatusValid
 	validDNS01 := DNSChallenge01("")
 	validDNS01.Status = StatusValid
+	validDNSAccount01 := DNSAccount01Challenge("")
+	validDNSAccount01.Status = StatusValid
 	testCases := []struct {
 		Name           string
 		Authz          Authorization
@@ -129,6 +131,22 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			},
 			ExpectedResult: ChallengeTypeDNS01,
 		},
+		// An authz with a valid DNS-ACCOUNT-01 challenge should return DNS-ACCOUNT-01
+		{
+			Name: "Valid DNS-ACCOUNT-01 challenge",
+			Authz: Authorization{
+				Challenges: []Challenge{HTTPChallenge01(""), validDNSAccount01, DNSChallenge01("")},
+			},
+			ExpectedResult: ChallengeTypeDNSAccount01,
+		},
+		// An authz with multiple valid challenges including DNS-ACCOUNT-01 should return
+		{
+			Name: "Valid DNS-ACCOUNT-01 and other challenges",
+			Authz: Authorization{
+				Challenges: []Challenge{validDNSAccount01, HTTPChallenge01(""), validHTTP01, validDNS01},
+			},
+			ExpectedResult: ChallengeTypeDNSAccount01,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -152,6 +170,8 @@ func TestChallengeStringID(t *testing.T) {
 	test.AssertEquals(t, ch.StringID(), "iFVMwA")
 	ch.Type = ChallengeTypeHTTP01
 	test.AssertEquals(t, ch.StringID(), "0Gexug")
+	ch.Type = ChallengeTypeDNSAccount01
+	test.AssertEquals(t, ch.StringID(), "Ks7nDA")
 }
 
 func TestFindChallengeByType(t *testing.T) {
