@@ -185,7 +185,7 @@ func TestCalculateDNSAccount01Label(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := va.calculateDNSAccount01Label(tc.accountURL)
+			result, err := va.calculateDNSAccount01Label(tc.accountURI)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}

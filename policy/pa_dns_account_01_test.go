@@ -20,9 +20,6 @@ func TestChallengeTypesForDNSAccount01(t *testing.T) {
 	pa, err := New(enabledChallenges, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create policy implementation")
 
-	features.Set(features.Config{DNSAccount01Enabled: false})
-	defer features.Reset()
-
 	regIdent := identifier.NewDNS("example.com")
 	challenges, _ := pa.ChallengeTypesFor(regIdent)
 
@@ -42,6 +39,7 @@ func TestChallengeTypesForDNSAccount01(t *testing.T) {
 	}
 
 	features.Set(features.Config{DNSAccount01Enabled: true})
+	defer features.Reset()
 
 	challenges, _ = pa.ChallengeTypesFor(regIdent)
 

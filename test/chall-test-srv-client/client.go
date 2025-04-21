@@ -407,6 +407,12 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 // base64url encoded SHA-256 hash of the provided value. Any failure returns an
 // error that includes the relevant operation and the payload.
 func (c *Client) AddDNSAccount01Response(accountURL, host, value string) ([]byte, error) {
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
 	label := calculateDNSAccount01Label(accountURL)
 	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
 	if !strings.HasSuffix(host, ".") {
@@ -431,6 +437,12 @@ func (c *Client) AddDNSAccount01Response(accountURL, host, value string) ([]byte
 // constructed using the accountURL. Any failure returns an error
 // that includes both the relevant operation and the payload.
 func (c *Client) RemoveDNSAccount01Response(accountURL, host string) ([]byte, error) {
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
 	label := calculateDNSAccount01Label(accountURL)
 	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
 	if !strings.HasSuffix(host, ".") {
