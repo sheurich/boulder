@@ -415,9 +415,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
-	accountURL string,
+	accountURI string,
 ) ([]core.ValidationRecord, error) {
-	va.log.Infof("validateChallenge called with challenge type %s and account URL: %s", kind, accountURL)
+	va.log.Infof("validateChallenge called with challenge type %s and account URI: %s", kind, accountURI)
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
@@ -430,7 +430,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	case core.ChallengeTypeDNSAccount01:
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURL)
+		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -735,15 +735,15 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
-	accountURL := req.Authz.AccountURI
-	va.log.Infof("DoDCV received account URI: %s", accountURL)
+	accountURI := req.Authz.AccountURI
+	va.log.Infof("DoDCV received account URI: %s", accountURI)
 	records, err := va.validateChallenge(
 		ctx,
 		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
-		accountURL,
+		accountURI,
 	)
 
 	// Stop the clock for local validation latency.

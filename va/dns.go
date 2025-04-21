@@ -67,29 +67,27 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 // This function validates that the accountURL is non-empty, syntactically valid,
 // and uses the HTTPS scheme before calculation. It returns the calculated label
 // and a nil error on success, or an empty string and a non-nil error on failure.
-func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURL string) (string, error) {
+func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURI string, accountURIPrefixes []string) (string, error) {
 
-	// 1. Non-Nil / Non-Empty Check
-	if accountURL == "" {
-		err := fmt.Errorf("accountURL cannot be empty")
-		return "", err
-	}
-
-	// 2. URL Parsing Check
-	parsedURL, err := url.Parse(accountURL)
+	// If the accounturi is not formatted according to RFC 3986, reject it.
+	_, err := url.Parse(accountURI)
 	if err != nil {
-		// Wrap the original error for context
-		err = fmt.Errorf("invalid account URL syntax %q: %w", accountURL, err)
-		return "", err
+		return "", berrors.MalformedError("Invalid Account URI syntax %q: %w", accountURI, err)
 	}
 
-	// 3. Scheme Check
-	if parsedURL.Scheme != "https" {
-		err = fmt.Errorf("account URL %q must use https scheme, found: %q", accountURL, parsedURL.Scheme)
-		return "", err
+	// Ensure accountURI matches a valid prefix
+	var found bool
+	for _, prefix := range accountURIPrefixes {
+		if strings.HasPrefix(accountURI, prefix) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", berrors.UnauthorizedError("Invalid Account URI prefix: %s", accountURI)
 	}
 
-	h := sha256.Sum256([]byte(accountURL))
+	h := sha256.Sum256([]byte(accountURI))
 	// Use ToLower as specified in the draft examples implicitly
 	label := fmt.Sprintf("_%s",
 		strings.ToLower(base32.StdEncoding.EncodeToString(h[:10])))
@@ -109,6 +107,7 @@ func (va *ValidationAuthorityImpl) calculateDNSAccount01Label(accountURL string)
 // for DNS-01: a base64url encoded SHA-256 digest of the key authorization.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURL string) ([]core.ValidationRecord, error) {
 	if !features.Get().DNSAccount01Enabled {
+		va.log.Infof("Got a dns-account-01 validation request but dns-account-01 challenge type is disabled")
 		return nil, berrors.UnauthorizedError("dns-account-01 challenge type disabled")
 	}
 
@@ -123,7 +122,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Compute the DNS-ACCOUNT-01 record
-	label, err := va.calculateDNSAccount01Label(accountURL)
+	label, err := va.calculateDNSAccount01Label(accountURL, va.accountURIPrefixes)
 	if err != nil {
 		return nil, berrors.MalformedError("dns-account-01 label calculation failed: %s", err)
 	}

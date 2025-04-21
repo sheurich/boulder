@@ -18,9 +18,10 @@ import (
 
 func paImpl(t *testing.T) *AuthorityImpl {
 	enabledChallenges := map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01:    true,
-		core.ChallengeTypeDNS01:     true,
-		core.ChallengeTypeTLSALPN01: true,
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        true,
+		core.ChallengeTypeDNSAccount01: true,
+		core.ChallengeTypeTLSALPN01:    true,
 	}
 
 	pa, err := New(enabledChallenges, blog.NewMock())
