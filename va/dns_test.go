@@ -103,6 +103,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		metrics.NoopRegisterer,
 		clock.New(),
 		1,
+		"",
 		log,
 		nil)
 

@@ -224,6 +224,7 @@ type HTTPRequest struct {
 	Host       string `json:"Host"`
 	HTTPS      bool   `json:"HTTPS"`
 	ServerName string `json:"ServerName"`
+	UserAgent  string `json:"UserAgent"`
 }
 
 // HTTPRequestHistory fetches the challenge server's HTTP request history for
@@ -470,6 +471,7 @@ type DNSRequest struct {
 		Qtype  uint16 `json:"Qtype"`
 		Qclass uint16 `json:"Qclass"`
 	} `json:"Question"`
+	UserAgent string `json:"UserAgent"`
 }
 
 // DNSRequestHistory returns the history of DNS requests made to the challenge
