@@ -407,7 +407,7 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURL parameter is required for dns-account-01 challenges to
+// The accountURI parameter is required for dns-account-01 challenges to
 // calculate the account-specific label.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
@@ -415,9 +415,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
-	accountURL string,
+	accountURI string,
 ) ([]core.ValidationRecord, error) {
-	va.log.Infof("validateChallenge called with challenge type %s and account URL: %s", kind, accountURL)
+	va.log.Infof("validateChallenge called with challenge type %s and account URI: %s", kind, accountURI)
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
@@ -430,7 +430,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	case core.ChallengeTypeDNSAccount01:
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURL)
+		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -688,6 +688,20 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, errors.New("challenge failed to deserialize")
 	}
 
+	if chall.Type == core.ChallengeTypeDNSAccount01 {
+		if req.Authz.AccountURI == "" {
+			return nil, berrors.MalformedError("account URI cannot be empty for dns-account-01 challenges")
+		}
+
+		parsedURL, err := url.Parse(req.Authz.AccountURI)
+		if err != nil {
+			return nil, berrors.MalformedError("invalid account URL syntax: %s", err)
+		}
+		if parsedURL.Scheme == "" || parsedURL.Host == "" {
+			return nil, berrors.MalformedError("account URL must be an absolute URL")
+		}
+	}
+
 	err = chall.CheckPending()
 	if err != nil {
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
@@ -735,15 +749,15 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
-	accountURL := req.Authz.AccountURI
-	va.log.Infof("DoDCV received account URI: %s", accountURL)
+	accountURI := req.Authz.AccountURI
+	va.log.Infof("DoDCV received account URI: %s", accountURI)
 	records, err := va.validateChallenge(
 		ctx,
 		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
-		accountURL,
+		accountURI,
 	)
 
 	// Stop the clock for local validation latency.

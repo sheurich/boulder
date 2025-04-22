@@ -13,6 +13,12 @@ import (
 	"strings"
 )
 
+var defaultAccountURIPrefixes = []string{
+	"http://boulder.service.consul:4000/acme/reg/",
+	"http://boulder.service.consul:4001/acme/acct/",
+	"https://example.com/acme/acct/",
+}
+
 // Client is an HTTP client for https://github.com/letsencrypt/challtestsrv's
 // management interface (test/chall-test-srv).
 type Client struct {
@@ -407,8 +413,17 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 // base64url encoded SHA-256 hash of the provided value. Any failure returns an
 // error that includes the relevant operation and the payload.
 func (c *Client) AddDNSAccount01Response(accountURL, host, value string) ([]byte, error) {
-	label := calculateDNSAccount01Label(accountURL)
-	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
+	label, err := calculateDNSAccount01Label(accountURL, defaultAccountURIPrefixes)
+	if err != nil {
+		return nil, fmt.Errorf("error calculating DNS label: %v", err)
+	}
+	host = fmt.Sprintf("%s._acme-challenge.%s", label, host)
 	if !strings.HasSuffix(host, ".") {
 		host += "."
 	}
@@ -431,8 +446,17 @@ func (c *Client) AddDNSAccount01Response(accountURL, host, value string) ([]byte
 // constructed using the accountURL. Any failure returns an error
 // that includes both the relevant operation and the payload.
 func (c *Client) RemoveDNSAccount01Response(accountURL, host string) ([]byte, error) {
-	label := calculateDNSAccount01Label(accountURL)
-	host = fmt.Sprintf("_%s._acme-challenge.%s", label, host)
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
+	label, err := calculateDNSAccount01Label(accountURL, defaultAccountURIPrefixes)
+	if err != nil {
+		return nil, fmt.Errorf("error calculating DNS label: %v", err)
+	}
+	host = fmt.Sprintf("%s._acme-challenge.%s", label, host)
 	if !strings.HasSuffix(host, ".") {
 		host += "."
 	}
@@ -447,9 +471,27 @@ func (c *Client) RemoveDNSAccount01Response(accountURL, host string) ([]byte, er
 	return resp, nil
 }
 
-func calculateDNSAccount01Label(accountURL string) string {
+func calculateDNSAccount01Label(accountURL string, accountURIPrefixes []string) (string, error) {
+	if accountURL == "" {
+		return "", fmt.Errorf("account URL cannot be empty")
+	}
+
+	if len(accountURIPrefixes) > 0 {
+		var found bool
+		for _, prefix := range accountURIPrefixes {
+			if strings.HasPrefix(accountURL, prefix) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("invalid account URI prefix: %s", accountURL)
+		}
+	}
+
 	h := sha256.Sum256([]byte(accountURL))
-	return strings.ToLower(base32.StdEncoding.EncodeToString(h[:10]))
+	label := fmt.Sprintf("_%s", strings.ToLower(base32.StdEncoding.EncodeToString(h[:10])))
+	return label, nil
 }
 
 // DNSRequest is a single DNS request in the request history.

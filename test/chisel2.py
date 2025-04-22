@@ -100,6 +100,9 @@ def get_any_supported_chall(authz):
     """
     Return the first supported challenge from the given authorization.
     Supports HTTP01, DNS01, and TLSALPN01 challenges.
+    
+    Note: DNS-ACCOUNT-01 challenge type is excluded from the list of supported
+    challenge types until the Python ACME library adds support for it.
     """
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, (challenges.HTTP01, challenges.DNS01, challenges.TLSALPN01)):
