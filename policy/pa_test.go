@@ -18,9 +18,10 @@ import (
 
 func paImpl(t *testing.T) *AuthorityImpl {
 	enabledChallenges := map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01:    true,
-		core.ChallengeTypeDNS01:     true,
-		core.ChallengeTypeTLSALPN01: true,
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        true,
+		core.ChallengeTypeDNSAccount01: true,
+		core.ChallengeTypeTLSALPN01:    true,
 	}
 
 	pa, err := New(enabledChallenges, blog.NewMock())
@@ -401,6 +402,9 @@ func TestChallengeTypesFor(t *testing.T) {
 	t.Parallel()
 	pa := paImpl(t)
 
+	features.Set(features.Config{DNSAccount01Enabled: true})
+	defer features.Reset()
+
 	testCases := []struct {
 		name       string
 		ident      identifier.ACMEIdentifier
@@ -411,7 +415,10 @@ func TestChallengeTypesFor(t *testing.T) {
 			name:  "dns",
 			ident: identifier.NewDNS("example.com"),
 			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
+				core.ChallengeTypeHTTP01,
+				core.ChallengeTypeDNS01,
+				core.ChallengeTypeTLSALPN01,
+				core.ChallengeTypeDNSAccount01,
 			},
 		},
 		{
@@ -419,6 +426,7 @@ func TestChallengeTypesFor(t *testing.T) {
 			ident: identifier.NewDNS("*.example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeDNS01,
+				core.ChallengeTypeDNSAccount01,
 			},
 		},
 		{
@@ -430,7 +438,6 @@ func TestChallengeTypesFor(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			challs, err := pa.ChallengeTypesFor(tc.ident)
 
 			if len(tc.wantChalls) != 0 {
