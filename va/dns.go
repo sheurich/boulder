@@ -50,8 +50,8 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, berrors.MalformedError("Identifier type for DNS challenge was not DNS")
+		va.log.Infof("Identifier type for DNS-01 challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS-01 challenge was not DNS")
 	}
 
 	// Compute the digest of the key authorization file
@@ -59,8 +59,16 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	h.Write([]byte(keyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
-	// Look for the required record in the DNS
+	// Construct the query domain specific to DNS-01
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
+
+	// Call the common validation logic
+	return va.validateDNS(ctx, ident, challengeSubdomain, authorizedKeysDigest)
+}
+
+// validateDNS performs the DNS TXT lookup and validation logic.
+func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identifier.ACMEIdentifier, challengeSubdomain string, authorizedKeysDigest string) ([]core.ValidationRecord, error) {
+	// Look for the required record in the DNS
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
