@@ -56,6 +56,7 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 // the common DNS validation logic.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, regID int64) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
+		va.log.Infof("Identifier type for DNS-ACCOUNT-01 challenge was not DNS: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
 	}
 
