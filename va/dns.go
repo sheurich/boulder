@@ -88,6 +88,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	return records, nil
 }
 
+
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
 		va.log.Infof("Identifier type for DNS-01 challenge was not DNS: %s", ident)

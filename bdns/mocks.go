@@ -56,6 +56,7 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
 
+
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	}
