@@ -1632,6 +1632,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Challenge:                chall,
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
+				AccountURI:               req.AccountURI,
 			},
 			&vapb.IsCAAValidRequest{
 				Domain:           authz.Identifier.Value,
@@ -2423,7 +2424,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			len(authz.Challenges) == 1 &&
+			(authz.Challenges[0].Type == core.ChallengeTypeDNS01 ||
+				(authz.Challenges[0].Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled)) {
 			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
 			if err != nil {
 				return nil, err

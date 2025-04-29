@@ -608,9 +608,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	testAccountURI := "https://example.com/acme/acct/1"
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
+		AccountURI:     testAccountURI,
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
@@ -625,6 +627,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Verify that the VA got the request, and it's the same as the others
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+	test.AssertEquals(t, testAccountURI, vaRequest.AccountURI)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
@@ -820,9 +823,11 @@ func TestPerformValidationVAError(t *testing.T) {
 	va.doDCVError = fmt.Errorf("Something went wrong")
 
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	testAccountURI := "https://example.com/acme/acct/1"
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
+		AccountURI:     testAccountURI,
 	})
 
 	test.AssertNotError(t, err, "PerformValidation completely failed")
@@ -838,6 +843,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Verify that the VA got the request, and it's the same as the others
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+	test.AssertEquals(t, testAccountURI, vaRequest.AccountURI)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
