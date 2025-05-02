@@ -1311,10 +1311,19 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			return
 		}
 
-		authzPB, err = wfe.ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		performValidationReq := &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
-		})
+		}
+
+		if features.Get().DNSAccount01Enabled {
+			challengeType := authz.Challenges[challengeIndex].Type
+			if challengeType == core.ChallengeTypeDNSAccount01 {
+				performValidationReq.AccountURI = web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, currAcct.ID))
+			}
+		}
+
+		authzPB, err = wfe.ra.PerformValidation(ctx, performValidationReq)
 		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
