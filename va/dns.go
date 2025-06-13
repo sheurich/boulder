@@ -54,14 +54,13 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 // validateDNSAccount01 handles the dns-account-01 challenge by calculating
 // the account-specific DNS query domain and expected digest, then calling
 // the common DNS validation logic.
-func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURI string) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, regID int64) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
 	}
-	if accountURI == "" {
-		va.log.Infof("DNS-ACCOUNT-01 validation for %q failed: missing accountURI", ident.Value)
-		return nil, berrors.InternalServerError("accountURI must be provided for dns-account-01")
-	}
+
+	// Construct the canonical account URI from the dnsAccountChallengeURIPrefix and regID
+	accountURI := fmt.Sprintf("%s%d", va.dnsAccountChallengeURIPrefix, regID)
 
 	// Calculate the DNS prefix label based on the account URI
 	sha256sum := sha256.Sum256([]byte(accountURI))

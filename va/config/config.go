@@ -29,6 +29,11 @@ type Common struct {
 	DNSAllowLoopbackAddresses bool
 
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+
+	// DNSAccountChallengeURIPrefix is the URI prefix used to construct the expected
+	// account URI for dns-account-01 challenge validation. It should be the
+	// canonical URI for the new-acct endpoint.
+	DNSAccountChallengeURIPrefix string `validate:"omitempty,url,required_if=Features.DNSAccount01Enabled true"`
 }
 
 // SetDefaultsAndValidate performs some basic sanity checks on fields stored in

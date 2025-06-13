@@ -203,21 +203,22 @@ func newDefaultPortConfig() *portConfig {
 type ValidationAuthorityImpl struct {
 	vapb.UnsafeVAServer
 	vapb.UnsafeCAAServer
-	log                blog.Logger
-	dnsClient          bdns.Client
-	issuerDomain       string
-	httpPort           int
-	httpsPort          int
-	tlsPort            int
-	userAgent          string
-	clk                clock.Clock
-	remoteVAs          []RemoteVA
-	maxRemoteFailures  int
-	accountURIPrefixes []string
-	singleDialTimeout  time.Duration
-	perspective        string
-	rir                string
-	isReservedIPFunc   func(ip net.IP) bool
+	log                          blog.Logger
+	dnsClient                    bdns.Client
+	issuerDomain                 string
+	httpPort                     int
+	httpsPort                    int
+	tlsPort                      int
+	userAgent                    string
+	clk                          clock.Clock
+	remoteVAs                    []RemoteVA
+	maxRemoteFailures            int
+	accountURIPrefixes           []string
+	dnsAccountChallengeURIPrefix string
+	singleDialTimeout            time.Duration
+	perspective                  string
+	rir                          string
+	isReservedIPFunc             func(ip net.IP) bool
 
 	metrics *vaMetrics
 }
@@ -235,6 +236,7 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
+	dnsAccountChallengeURIPrefix string,
 	perspective string,
 	rir string,
 	reservedIPChecker func(ip net.IP) bool,
@@ -255,18 +257,19 @@ func NewValidationAuthorityImpl(
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
-		log:                logger,
-		dnsClient:          resolver,
-		issuerDomain:       issuerDomain,
-		httpPort:           pc.HTTPPort,
-		httpsPort:          pc.HTTPSPort,
-		tlsPort:            pc.TLSPort,
-		userAgent:          userAgent,
-		clk:                clk,
-		metrics:            initMetrics(stats),
-		remoteVAs:          remoteVAs,
-		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
-		accountURIPrefixes: accountURIPrefixes,
+		log:                          logger,
+		dnsClient:                    resolver,
+		issuerDomain:                 issuerDomain,
+		httpPort:                     pc.HTTPPort,
+		httpsPort:                    pc.HTTPSPort,
+		tlsPort:                      pc.TLSPort,
+		userAgent:                    userAgent,
+		clk:                          clk,
+		metrics:                      initMetrics(stats),
+		remoteVAs:                    remoteVAs,
+		maxRemoteFailures:            maxAllowedFailures(len(remoteVAs)),
+		accountURIPrefixes:           accountURIPrefixes,
+		dnsAccountChallengeURIPrefix: dnsAccountChallengeURIPrefix,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
@@ -407,7 +410,7 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 challenges to
+// The regID parameter is required for dns-account-01 challenges to
 // calculate the account-specific label.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
@@ -415,7 +418,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
-	accountURI string,
+	regID int64,
 ) ([]core.ValidationRecord, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -430,7 +433,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		if features.Get().DNSAccount01Enabled {
 			// Strip a (potential) leading wildcard token from the identifier.
 			ident.Value = strings.TrimPrefix(ident.Value, "*.")
-			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+			return va.validateDNSAccount01(ctx, ident, keyAuthorization, regID)
 		}
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
@@ -737,7 +740,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
-		req.AccountURI,
+		req.Authz.RegID,
 	)
 
 	// Stop the clock for local validation latency.

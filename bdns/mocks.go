@@ -21,7 +21,7 @@ type MockClient struct {
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
 	// Use the example account-specific label prefix derived from
 	// "https://example.com/acme/acct/ExampleAccount"
-	const accountLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
+	const accountLabelPrefix = "_ao3pcvmacvwyw63b._acme-challenge"
 
 	if hostname == accountLabelPrefix+".servfail.com" {
 		// Mirror dns-01 servfail behaviour

@@ -81,7 +81,7 @@ func TestMain(m *testing.M) {
 	os.Exit(ret)
 }
 
-var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"}
+var accountURIPrefixes = []string{"https://example.com/acme/acct/"}
 
 func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
@@ -146,6 +146,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		fc,
 		logger,
 		accountURIPrefixes,
+		accountURIPrefixes[0],
 		perspective,
 		"",
 		isNonLoopbackReservedIP,
@@ -332,6 +333,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		clock.NewFake(),
 		blog.NewMock(),
 		accountURIPrefixes,
+		accountURIPrefixes[0],
 		"example perspective",
 		"",
 		isNonLoopbackReservedIP,
@@ -389,7 +391,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, 12345)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)

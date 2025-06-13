@@ -3,6 +3,7 @@ package va
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -11,20 +12,29 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
-// Use a consistent test account URI, matching the example in the draft
-const testAccountURI = "https://example.com/acme/acct/ExampleAccount"
+// testReservedIPFunc is a mock function for testing
+func testReservedIPFunc(ip net.IP) bool {
+	return false
+}
 
-// Expected label prefix derived from testAccountURI (as per draft example)
-const expectedLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
+// Use a test regID that will generate the expected account URI
+const testRegID = 12345
+
+// Expected account URI that will be constructed from prefix + regID
+const testAccountURI = "https://example.com/acme/acct/12345"
+
+// Expected label prefix derived from testAccountURI (calculated from testRegID)
+const expectedLabelPrefix = "_ao3pcvmacvwyw63b._acme-challenge"
 
 func TestDNSAccount01ValidationWrong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
-	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -37,7 +47,7 @@ func TestDNSAccount01ValidationWrong(t *testing.T) {
 func TestDNSAccount01ValidationWrongMany(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -50,7 +60,7 @@ func TestDNSAccount01ValidationWrongMany(t *testing.T) {
 func TestDNSAccount01ValidationWrongLong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -63,7 +73,7 @@ func TestDNSAccount01ValidationWrongLong(t *testing.T) {
 func TestDNSAccount01ValidationFailure(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
@@ -76,7 +86,7 @@ func TestDNSAccount01ValidationFailure(t *testing.T) {
 func TestDNSAccount01ValidationIP(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -90,7 +100,7 @@ func TestDNSAccount01ValidationInvalid(t *testing.T) {
 
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(ctx, notDNS, expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(ctx, notDNS, expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -99,7 +109,7 @@ func TestDNSAccount01ValidationInvalid(t *testing.T) {
 func TestDNSAccount01ValidationServFail(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization, testRegID)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
@@ -120,7 +130,7 @@ func TestDNSAccount01ValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, err = va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testAccountURI)
+	_, err = va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -128,7 +138,7 @@ func TestDNSAccount01ValidationNoServer(t *testing.T) {
 func TestDNSAccount01ValidationOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization, testAccountURI)
+	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization, testRegID)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -136,29 +146,29 @@ func TestDNSAccount01ValidationOK(t *testing.T) {
 func TestDNSAccount01ValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization, testAccountURI)
+	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization, testRegID)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
 
-func TestDNSAccount01ValidationEmptyAccountURI(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+func TestDNSAccount01ValidationNoAccountURIPrefixes(t *testing.T) {
+	// Try to create a VA with no accountURIPrefixes to test error handling
+	_, err := NewValidationAuthorityImpl(
+		&bdns.MockClient{},
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		metrics.NoopRegisterer,
+		clock.NewFake(),
+		blog.NewMock(),
+		[]string{}, // Empty accountURIPrefixes
+		"",
+		"test perspective",
+		"",
+		testReservedIPFunc,
+	)
 
-	// The specific domain doesn't matter, as the function should
-	// reject the empty accountURI before DNS lookup.
-	ident := identifier.NewDNS("empty-uri-test.com")
-
-	// Call the validation function with an empty accountURI
-	_, err := va.validateDNSAccount01(ctx, ident, expectedKeyAuthorization, "")
-
-	// Assert that an error was returned
-	test.Assert(t, err != nil, "validateDNSAccount01 succeeded unexpectedly with an empty account URI")
-
-	// Assert the specific error type
-	prob := detailedError(err)
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-
-	// Assert the specific error message
-	expectedErrMsg := "connection :: Error getting validation data"
-	test.AssertEquals(t, prob.String(), expectedErrMsg)
+	// Assert that an error was returned during construction
+	test.Assert(t, err != nil, "VA construction succeeded unexpectedly with no accountURIPrefixes")
+	test.AssertEquals(t, err.Error(), "no account URI prefixes configured")
 }
