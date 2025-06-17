@@ -3,6 +3,7 @@ package va
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/netip"
 	"testing"
@@ -23,17 +24,44 @@ func testReservedIPFunc(ip net.IP) bool {
 	return false
 }
 
-// Use a test regID that will generate the expected account URI
-const testRegID = 12345
+// setupDNSAccount01 creates a VA configured to use RFC example account URI
+func setupDNSAccount01() (*ValidationAuthorityImpl, *blog.Mock) {
+	features.Reset()
+	fc := clock.NewFake()
+	logger := blog.NewMock()
+	
+	// Configure VA to use RFC example account URI prefix
+	// When regID 0 is appended, we get the RFC example account URI
+	rfcAccountURIPrefixes := []string{"https://example.com/acme/acct/"}
+	
+	va, err := NewValidationAuthorityImpl(
+		&bdns.MockClient{Log: logger},
+		nil, // no remote VAs
+		"user agent 1.0",
+		"letsencrypt.org",
+		metrics.NoopRegisterer,
+		fc,
+		logger,
+		rfcAccountURIPrefixes,
+		"https://example.com/acme/acct/ExampleAccount", // Use RFC example directly
+		"test perspective",
+		"",
+		testReservedIPFunc,
+	)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
+	}
+	
+	return va, logger
+}
 
-// Expected account URI that will be constructed from prefix + regID
-const testAccountURI = "https://example.com/acme/acct/12345"
+const testAccountURI = "https://example.com/acme/acct/ExampleAccount"
+const expectedLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
 
-// Expected label prefix derived from testAccountURI (calculated from testRegID)
-const expectedLabelPrefix = "_ao3pcvmacvwyw63b._acme-challenge"
+const testRegID = 0
 
 func TestDNSAccount01ValidationWrong(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
@@ -45,7 +73,7 @@ func TestDNSAccount01ValidationWrong(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationWrongMany(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
@@ -58,7 +86,7 @@ func TestDNSAccount01ValidationWrongMany(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationWrongLong(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization, testRegID)
 	if err == nil {
@@ -71,7 +99,7 @@ func TestDNSAccount01ValidationWrongLong(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationFailure(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
@@ -84,7 +112,7 @@ func TestDNSAccount01ValidationFailure(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationIP(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
@@ -98,7 +126,7 @@ func TestDNSAccount01ValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(ctx, notDNS, expectedKeyAuthorization, testRegID)
 	prob := detailedError(err)
@@ -107,7 +135,7 @@ func TestDNSAccount01ValidationInvalid(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationServFail(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization, testRegID)
 
@@ -116,7 +144,7 @@ func TestDNSAccount01ValidationServFail(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationNoServer(t *testing.T) {
-	va, log := setup(nil, "", nil, nil)
+	va, log := setupDNSAccount01()
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
 
@@ -136,7 +164,7 @@ func TestDNSAccount01ValidationNoServer(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationOK(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization, testRegID)
 
@@ -144,7 +172,7 @@ func TestDNSAccount01ValidationOK(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setupDNSAccount01()
 
 	_, prob := va.validateDNSAccount01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization, testRegID)
 
