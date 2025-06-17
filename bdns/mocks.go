@@ -2,10 +2,13 @@ package bdns
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/miekg/dns"
 
@@ -21,7 +24,7 @@ type MockClient struct {
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
 	// Use the example account-specific label prefix derived from
 	// "https://example.com/acme/acct/ExampleAccount"
-	const accountLabelPrefix = "_ao3pcvmacvwyw63b._acme-challenge"
+	accountLabelPrefix := calculateAccountLabelPrefix("https://example.com/acme/acct/ExampleAccount")
 
 	if hostname == accountLabelPrefix+".servfail.com" {
 		// Mirror dns-01 servfail behaviour
@@ -155,6 +158,12 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP
 	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, ResolverAddrs{"MockClient"}, nil
+}
+
+func calculateAccountLabelPrefix(accountURL string) string {
+	h := sha256.Sum256([]byte(accountURL))
+	label := fmt.Sprintf("_%s", strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:10])))
+	return label + "._acme-challenge"
 }
 
 // LookupCAA returns mock records for use in tests.

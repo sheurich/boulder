@@ -2445,8 +2445,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			}
 			if len(authz.Challenges) != expectedChallenges {
 				return nil, berrors.InternalServerError(
-					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with %d challenges, expected 1",
-					authz.ID, len(authz.Challenges))
+					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with %d challenges, expected %d",
+					authz.ID, len(authz.Challenges), expectedChallenges)
 			}
 
 			challengeType := authz.Challenges[0].Type

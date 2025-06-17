@@ -471,7 +471,7 @@ func calculateDNSAccount01Label(accountURL string) (string, error) {
 	}
 
 	h := sha256.Sum256([]byte(accountURL))
-	label := fmt.Sprintf("_%s", strings.ToLower(base32.StdEncoding.EncodeToString(h[:10])))
+	label := fmt.Sprintf("_%s", strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:10])))
 	return label, nil
 }
 
