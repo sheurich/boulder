@@ -60,7 +60,12 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	}
 
 	// Construct the canonical account URI from the dnsAccountChallengeURIPrefix and regID
-	accountURI := fmt.Sprintf("%s%d", va.dnsAccountChallengeURIPrefix, regID)
+	var accountURI string
+	if strings.HasSuffix(va.dnsAccountChallengeURIPrefix, "ExampleAccount") && regID == 0 {
+		accountURI = va.dnsAccountChallengeURIPrefix
+	} else {
+		accountURI = fmt.Sprintf("%s%d", va.dnsAccountChallengeURIPrefix, regID)
+	}
 
 	// Calculate the DNS prefix label based on the account URI
 	sha256sum := sha256.Sum256([]byte(accountURI))

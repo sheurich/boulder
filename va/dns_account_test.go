@@ -12,6 +12,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -31,7 +32,6 @@ func setupDNSAccount01() (*ValidationAuthorityImpl, *blog.Mock) {
 	logger := blog.NewMock()
 	
 	// Configure VA to use RFC example account URI prefix
-	// When regID 0 is appended, we get the RFC example account URI
 	rfcAccountURIPrefixes := []string{"https://example.com/acme/acct/"}
 	
 	va, err := NewValidationAuthorityImpl(
@@ -43,7 +43,7 @@ func setupDNSAccount01() (*ValidationAuthorityImpl, *blog.Mock) {
 		fc,
 		logger,
 		rfcAccountURIPrefixes,
-		"https://example.com/acme/acct/ExampleAccount", // Use RFC example directly
+		"https://example.com/acme/acct/ExampleAccount", // This will have regID appended
 		"test perspective",
 		"",
 		testReservedIPFunc,
