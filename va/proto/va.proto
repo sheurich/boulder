@@ -43,7 +43,6 @@ message PerformValidationRequest {
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
   string expectedKeyAuthorization = 4;
-  string accountURI = 6;
 }
 
 message AuthzMeta {
