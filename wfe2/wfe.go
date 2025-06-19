@@ -1263,7 +1263,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *web.RequestEvent) {
-	body, jws, currAcct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currAcct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if err != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -1322,12 +1322,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		}
 
 		if features.Get().DNSAccount01Enabled {
-			challengeType := authz.Challenges[challengeIndex].Type
-			if challengeType == core.ChallengeTypeDNSAccount01 {
-				// Extract the AccountURI from the JWS Protected Header `kid`
-				// field and include it in the validation request.
-				performValidationReq.AccountURI = jws.Signatures[0].Header.KeyID
-			}
+			// dns-account-01 challenges are handled by the VA using the
+			// registration ID and configured account URI prefix
 		}
 
 		authzPB, err = wfe.ra.PerformValidation(ctx, performValidationReq)

@@ -1645,7 +1645,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Challenge:                chall,
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
-				AccountURI:               req.AccountURI,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),

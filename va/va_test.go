@@ -144,6 +144,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		accountURIPrefixes,
 		perspective,
 		"",
+		"https://acme-v01.api.letsencrypt.org/acme/acct/",
 		isNonLoopbackReservedIP,
 	)
 	if err != nil {
@@ -322,6 +323,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		accountURIPrefixes,
 		"example perspective",
 		"",
+		"https://acme-v01.api.letsencrypt.org/acme/acct/",
 		isNonLoopbackReservedIP,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
