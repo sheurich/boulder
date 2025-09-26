@@ -8,19 +8,38 @@ This document describes how to run the **Boulder** ACME server and its supportin
 
 ## Migration Strategy
 
-1. **Phase 1: External Dependencies First**
+1. **Phase 0: Analysis and Documentation**
+
+   - Use automated discovery tools to map the existing Docker Compose setup:
+     - Extract service dependency graph from `startservers.py`
+     - Document all network communication patterns
+     - Map configuration files and environment variables
+     - Generate network topology diagrams
+   - Deliverables:
+     - Complete service dependency graph with circular dependency identification
+     - Network communication matrix showing all service interactions
+     - Configuration inventory with all 30+ config files mapped
+     - Service startup sequence diagram
+
+2. **Phase 1: External Dependencies First**
 
    - Move Boulder’s external dependencies (MariaDB, Redis, Consul, ProxySQL) into Kubernetes Deployments/StatefulSets and Services.
    - Boulder itself will remain bundled in a single container initially, running `test.sh` and `startservers.py` as before.
    - Kubernetes’ role in this phase is simply replacing Docker Compose’s orchestration of non-Boulder services.
 
-2. **Phase 2: Split Boulder Services**
+3. **Phase 2: Split Boulder Services with Service Grouping**
 
-   - Break Boulder’s microservices (RA, SA, CA, WFE, VA, etc.) into separate Deployments.
+   - Instead of splitting all services at once, use a phased approach:
+     - **Group 1**: Core storage and validation (SA instances, Remote VAs)
+     - **Group 2**: Certificate operations (CA instances with SCT providers)
+     - **Group 3**: Registration and workflow (RA instances, Publishers)
+     - **Group 4**: Frontend services (WFE2, SFE, Nonce services)
+     - **Group 5**: Administrative services (CRL, bad-key-revoker, etc.)
+   - Deploy service groups together initially, then gradually separate based on stability.
    - Use Kubernetes **readiness probes** and **liveness probes** to replicate the startup sequencing currently managed by `startservers.py`.
-   - Replace the topological sort logic with Kubernetes service discovery and dependency handling (Pods become “ready” only after their health checks succeed).
+   - Replace the topological sort logic with Kubernetes service discovery and dependency handling (Pods become "ready" only after their health checks succeed).
 
-3. **Phase 3: Kubernetes-native Initialization**
+4. **Phase 3: Kubernetes-native Initialization**
 
    - Replace Boulder’s `bsetup` stage with a Kubernetes **Job**, which runs once per cluster bootstrap and generates required test certificates and data.
 
@@ -30,17 +49,19 @@ This document describes how to run the **Boulder** ACME server and its supportin
 
      - Init containers run to completion before the main app container starts.
 
-4. **Phase 4: Config & Secrets Management**
+5. **Phase 4: Config & Secrets Management**
 
    - Store Boulder configuration in **ConfigMaps**.
    - Handle keys, certs, and other sensitive data with **Kubernetes Secrets**.
    - Mount these into Pods at runtime.
 
-5. **Phase 5: Observability and Scaling**
+6. **Phase 5: Observability and Scaling**
 
    - Integrate with Kubernetes logging (stdout/stderr collection).
    - Add Prometheus metrics scraping from Boulder services.
+   - Integrate Jaeger distributed tracing with OpenTelemetry collectors.
    - Horizontal Pod Autoscalers (HPAs) can later be introduced for stateless services like RA or VA.
+   - Consider service mesh (Istio/Linkerd) for advanced observability and traffic management.
 
 ## Deployment Details
 
@@ -48,23 +69,309 @@ This document describes how to run the **Boulder** ACME server and its supportin
 
 - **Database (MariaDB)**: StatefulSet with PersistentVolumeClaims for durable storage.
 - **Consul**: Deployment or StatefulSet, Service for discovery. Retained in early phases for compatibility with Boulder configs.
-- **ProxySQL**: Deployment, Service.
+- **ProxySQL**: Deployment, Service for database connection pooling.
+- **Redis (2 instances)**: Deployments for rate limiting backend. Boulder requires two separate Redis instances for redundancy.
+- **Jaeger**: Deployment, Service for distributed tracing across Boulder microservices.
+- **PKIMetal**: Deployment, Service for certificate validation (required for Boulder startup).
+- **Challenge Test Server**: Deployment with multiple network interfaces for ACME challenge validation (HTTP-01, DNS-01, TLS-ALPN-01).
+- **CT Log Test Server**: Deployment, Service for Certificate Transparency log submission testing.
+- **AIA Test Server**: Deployment, Service for Authority Information Access certificate validation.
+- **S3 Test Server**: Deployment, Service for Certificate Revocation List (CRL) storage testing.
+- **Pardot Test Server**: Deployment, Service for Salesforce/Pardot API integration testing.
+- **Zendesk Test Server**: Deployment, Service for Zendesk API integration testing.
 
 ### Boulder Services
 
+Boulder consists of 30+ service instances across multiple categories:
+
+#### Core ACME Services (Multiple Instances)
+- **Registration Authority (RA)**: 2 main instances + 2 SCT provider instances
+  - `boulder-ra-1`, `boulder-ra-2` (ports 9394, 9494)
+  - `boulder-ra-sct-provider-1`, `boulder-ra-sct-provider-2` (ports 9594, 9694)
+- **Storage Authority (SA)**: 2 instances for database operations (ports 9395, 9495)
+- **Certificate Authority (CA)**: 2 instances for certificate issuance (ports 9393, 9493)
+- **Validation Authority (VA)**: 2 instances for domain validation (ports 9392, 9492)
+- **Publisher**: 2 instances for CT log submission (ports 9391, 9491)
+
+#### Remote Validation Authorities
+- **Remote VAs**: 3 geographically distributed instances for multi-perspective validation
+  - `remoteva-a`, `remoteva-b`, `remoteva-c` (ports 9397, 9498, 9499)
+
+#### Frontend Services
+- **Web Frontend (WFE2)**: ACME v2 protocol handler (port 4001/4431)
+- **Self-Service Frontend (SFE)**: Account management interface (port 4003)
+
+#### Nonce Services (Multi-Datacenter)
+- **Taro DC**: 2 instances (`nonce-service-taro-1`, `nonce-service-taro-2`)
+- **Zinc DC**: 1 instance (`nonce-service-zinc-1`)
+
+#### Administrative Services
+- **CRL Services**: `crl-storer`, `crl-updater`
+- **Bad Key Revoker**: Automated weak key detection
+- **Email Exporter**: Salesforce/Pardot integration
+- **Log Validator**: CT log validation
+
+#### Migration Strategy
 - Initially: single Pod running Boulder as today, inside a container with `startservers.py`.
-- Later: separate Deployments for each microservice (RA, CA, SA, VA, WFE, nonce, publisher, etc.).
+- Phase 2: Separate Deployments for each service instance listed above.
 - Service objects expose gRPC/HTTP ports to other Boulder components.
 
 ### Initialization
 
-- **Cluster-wide bootstrap**: Kubernetes Job for `bsetup`.
-- **Per-Pod setup**: Init Containers for ephemeral setup tasks (e.g., copying keys, waiting on service readiness).
+#### Database Initialization
+
+Boulder requires complex database setup with 4 databases and specific migrations:
+
+**Options for Migration Management:**
+
+1. **Kubernetes Job with ConfigMap** (Simplest, closest to Docker Compose)
+   - **Pros**: Simple, version-controlled migrations, easy rollback
+   - **Cons**: ConfigMap size limits for large migration sets
+   - **Implementation**: Store migrations in ConfigMap, Job mounts and executes them
+
+2. **Kubernetes Job with PersistentVolume** (Most robust)
+   - **Pros**: No size limits, persistent migration history, supports large schemas
+   - **Cons**: Requires PV provisioning, more complex state management
+   - **Implementation**: Init container copies migrations to PV, Job executes from PV
+
+3. **Operator-based Migration** (Most Kubernetes-native)
+   - **Pros**: Declarative, automatic rollback, integrated with GitOps
+   - **Cons**: Requires custom operator development or third-party tools
+   - **Implementation**: CRD defines desired schema version, operator handles migration
+
+**Recommendation**: Use Kubernetes Job with ConfigMap (Option 1) for Phase 1 as it's simplest and most similar to the current Docker Compose setup. Consider migrating to PersistentVolume (Option 2) in later phases if migration sets grow large, or to Operator-based (Option 3) for production deployments requiring GitOps integration.
+
+**Database Setup Requirements:**
+- Create databases: `boulder_sa_test`, `boulder_sa_integration`, `incidents_sa_test`, `incidents_sa_integration`
+- Run migrations from `/sa/db/` directory in specific order
+- Create database users with appropriate permissions
+- Configure ProxySQL for connection pooling
+
+#### Service Initialization
+
+- **Cluster-wide bootstrap**: Kubernetes Job for `bsetup` certificate generation
+- **Per-Pod setup**: Init Containers for ephemeral setup tasks
+- **TLS certificates**: Mount from `/test/certs/ipki/` via Secrets
 
 ### Networking
 
-- Services provide DNS-based discovery (e.g., `boulder-ra.default.svc.cluster.local`).
-- Ingress can be added later to expose ACME endpoints outside the cluster.
+Boulder requires three distinct network segments to properly isolate traffic:
+
+#### Network Topology
+- **Internal Network (bouldernet equivalent - 10.77.77.0/24)**:
+  - All Boulder microservices communication via gRPC
+  - Infrastructure services (MySQL, Redis, Consul, Jaeger)
+  - Service discovery and health checks
+  - Kubernetes implementation: Default cluster network with NetworkPolicies
+
+- **Public Network 1 (publicnet equivalent - 64.112.117.0/25)**:
+  - HTTP-01 challenge validation (port 80)
+  - HTTPS redirect testing (port 443)
+  - Simulates public internet for challenge responses
+  - Kubernetes implementation: LoadBalancer service with specific external IP
+
+- **Public Network 2 (publicnet2 equivalent - 64.112.117.128/25)**:
+  - TLS-ALPN-01 challenge validation (port 443)
+  - Separate from HTTP to avoid port conflicts
+  - Integration test HTTP servers
+  - Kubernetes implementation: Second LoadBalancer service with distinct external IP
+
+#### Kubernetes Network Implementation
+- **NetworkPolicies**: Enforce network segmentation between internal and public traffic
+- **Multi-homed Pods**: Challenge Test Server pods need interfaces on all three networks
+- **Service Mesh**: Consider Istio/Linkerd for advanced traffic management
+- **DNS**: Services provide DNS-based discovery (e.g., `boulder-ra.default.svc.cluster.local`)
+- **Ingress/LoadBalancer**: Expose ACME endpoints and challenge validators to external traffic
+
+### Service Discovery
+
+Boulder uses Consul SRV records for sophisticated service discovery with load balancing:
+
+#### Migration Strategy
+
+**Recommendation**: Keep Consul initially, gradually migrate to Kubernetes native discovery.
+
+**Phase 1: Consul on Kubernetes** (Minimal changes)
+- Deploy Consul as StatefulSet with persistent storage
+- Services continue using `_service._tcp.service.consul` SRV records
+- Minimal code changes required in Boulder
+- Maintains existing load balancing and health checking
+
+**Phase 2: Hybrid Discovery** (Gradual migration)
+- Implement Kubernetes Services alongside Consul
+- Use CoreDNS to bridge between Consul and Kubernetes DNS
+- Gradually update service configurations to use Kubernetes endpoints
+
+**Phase 3: Native Kubernetes** (Full migration)
+- Replace Consul SRV lookups with Kubernetes headless Services
+- Implement custom gRPC resolvers for Kubernetes endpoints
+- Use Service topology hints for zone-aware routing
+
+### Dependency Management
+
+Boulder has complex service dependencies including a circular dependency between CA and RA:
+
+#### Circular Dependency Resolution Options
+
+1. **SCT Provider Pattern** (Minimal change from Docker Compose)
+   - **Complexity**: Low - mirrors existing architecture
+   - **Divergence**: None - exact same pattern as Docker Compose
+   - **Implementation**: Deploy separate `ra-sct-provider` pods that only serve SCT endpoints
+   - **Pros**: No code changes, proven pattern, maintains separation of concerns
+   - **Cons**: Additional pod overhead
+
+2. **Init Container Sequencing** (Kubernetes-native)
+   - **Complexity**: Medium - requires careful orchestration
+   - **Divergence**: Medium - different startup mechanism
+   - **Implementation**: Init containers check service availability before main container starts
+   - **Pros**: Kubernetes-native, clear dependency declaration
+   - **Cons**: Doesn't truly resolve circular dependency, just delays it
+
+3. **Lazy Connection with Backoff** (Code change required)
+   - **Complexity**: High - requires Boulder code modifications
+   - **Divergence**: High - changes core connection logic
+   - **Implementation**: Services connect to dependencies on first use with exponential backoff
+   - **Pros**: Eliminates startup ordering requirements
+   - **Cons**: Requires code changes, potential latency on first requests
+
+4. **Kubernetes Operators** (Advanced)
+   - **Complexity**: Very High - requires custom operator development
+   - **Divergence**: Very High - completely different orchestration model
+   - **Implementation**: Custom operator manages Boulder deployment with state machine
+   - **Pros**: Full control over startup sequence, advanced orchestration
+   - **Cons**: Significant development effort, maintenance overhead
+
+**Recommendation**: Use SCT Provider Pattern (Option 1) initially as it requires zero code changes and exactly mirrors the current Docker Compose behavior.
+
+#### Startup Sequencing
+
+Implement dependency-aware startup using:
+- **Readiness probes** with gRPC health checks
+- **Init containers** to verify dependent services are available
+- **Pod disruption budgets** to maintain service availability during updates
+
+### Health Checks and Probes
+
+Boulder uses gRPC health check protocol with specific requirements:
+
+#### gRPC Health Check Configuration
+
+```yaml
+readinessProbe:
+  exec:
+    command: ["/boulder/health-checker", "-config", "/config/health-checker.json"]
+  initialDelaySeconds: 10
+  periodSeconds: 2
+  timeoutSeconds: 10
+  successThreshold: 1
+  failureThreshold: 50  # 100-second total timeout (50 * 2s)
+
+livenessProbe:
+  grpc:
+    port: 9393
+    service: "ca.CertificateAuthority"  # Service-specific health check
+  initialDelaySeconds: 30
+  periodSeconds: 10
+```
+
+**Requirements:**
+- Custom health-checker binary for complex health validation
+- TLS with host override for certificate validation
+- Service-specific health endpoints (e.g., `sa.StorageAuthority`)
+- 100-second timeout for service availability during startup
+
+### Configuration Management
+
+Boulder's configuration involves 30+ service-specific JSON files:
+
+#### Configuration Strategy
+
+**ConfigMaps for Service Configs:**
+- One ConfigMap per service type (e.g., `boulder-ra-config`, `boulder-ca-config`)
+- Mount at `/config/` in containers
+- Version configs with labels for rollback capability
+
+**Secrets for Sensitive Data:**
+- TLS certificates from `/test/certs/ipki/`
+- Database credentials
+- API keys for external services
+
+**Environment Variables:**
+- `BOULDER_CONFIG_DIR` for config directory override
+- `FAKE_DNS` for DNS resolution override
+- Feature flags per service
+
+### Stateful Services Considerations
+
+Some Boulder services maintain state that requires special handling:
+
+#### Stateful Components
+
+1. **Nonce Services**
+   - Maintain nonce state with prefix-based routing
+   - Use StatefulSet with stable network identities
+   - Configure anti-affinity for datacenter distribution
+
+2. **Rate Limiting (Redis)**
+   - Two Redis instances with consistent hashing
+   - StatefulSet with persistent volumes
+   - Redis Cluster or Sentinel for HA
+
+3. **Database Connections (ProxySQL)**
+   - Connection pool state
+   - StatefulSet with connection persistence
+   - Session affinity for connection reuse
+
+#### Implementation Recommendations
+
+- Use **StatefulSets** for services requiring stable identities
+- Configure **PersistentVolumes** for state that must survive pod restarts
+- Implement **session affinity** where connection state matters
+- Use **pod disruption budgets** to prevent data loss during updates
+
+## Testing Strategy
+
+Ensure Boulder's comprehensive test suite works with Kubernetes deployment:
+
+### Running Integration Tests
+
+1. **Test Environment Setup**
+   - Deploy test instance of Boulder on Kubernetes
+   - Use separate namespace (e.g., `boulder-test`)
+   - Configure test-specific network policies
+
+2. **Test Execution**
+   - Modify `t.sh` wrapper to target Kubernetes deployment
+   - Use `kubectl exec` for running tests inside cluster
+   - Port-forward services for external test execution
+
+3. **Test Data Management**
+   - Use Kubernetes Jobs for `bsetup` test data generation
+   - ConfigMaps for test configuration
+   - Temporary PVs for test artifacts
+
+### CI/CD Pipeline Modifications
+
+1. **Build Pipeline**
+   - Build Docker images with version tags
+   - Push to container registry
+   - Update Kubernetes manifests with new image versions
+
+2. **Deployment Pipeline**
+   - Use Helm or Kustomize for environment-specific configs
+   - Implement blue-green or canary deployments
+   - Automated rollback on health check failures
+
+3. **Test Pipeline**
+   - Spin up ephemeral Kubernetes cluster (e.g., kind, k3s)
+   - Deploy Boulder and run full test suite
+   - Collect logs and metrics for analysis
+   - Tear down cluster after tests
+
+4. **Integration with Existing Tests**
+   - Adapt `test.sh` to work with Kubernetes endpoints
+   - Update `v2_integration.py` to use Kubernetes service discovery
+   - Modify challenge test client to work with LoadBalancer IPs
 
 ## Roadmap
 
