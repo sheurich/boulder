@@ -1,0 +1,398 @@
+---
+# Boulder source code ConfigMap - contains essential scripts only
+# The full source will be mounted via init container or host path
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-source
+  labels:
+    app: boulder-test
+    component: source-code
+data:
+  # Placeholder - actual source code will be mounted differently
+  README: |
+    This ConfigMap is a placeholder for Boulder source code.
+    The actual implementation uses volume mounts or init containers
+    to provide the full source code to test containers.
+
+---
+# Test configuration files ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-test-config
+  labels:
+    app: boulder-test
+    component: config
+data:
+  # Redis configuration - simplified for testing without TLS
+  redis-ratelimits.config: |
+    port 6379
+    bind 0.0.0.0
+    save 60 1
+    maxmemory-policy noeviction
+    loglevel warning
+    # Disable protected mode for testing
+    protected-mode no
+    # List of renamed commands comes from:
+    # https://www.digitalocean.com/community/tutorials/how-to-secure-your-redis-installation-on-ubuntu-18-04
+    rename-command BGREWRITEAOF ""
+    rename-command BGSAVE ""
+    rename-command CONFIG ""
+    rename-command DEBUG ""
+    rename-command FLUSHDB ""
+    rename-command KEYS ""
+    rename-command PEXPIRE ""
+    rename-command RENAME ""
+    rename-command SAVE ""
+    rename-command SHUTDOWN ""
+    rename-command SPOP ""
+    rename-command SREM ""
+    user default off
+    user boulder-wfe       on +@all ~* >b3b2fcbbf46fe39fd522c395a51f84d93a98ff2f
+    user admin-user        on +@all ~* >435e9c4225f08813ef3af7c725f0d30d263b9cd3
+    user unittest-rw       on +@all ~* >824968fa490f4ecec1e52d5e34916bdb60d45f8d
+    masteruser admin-user
+    masterauth 435e9c4225f08813ef3af7c725f0d30d263b9cd3
+
+  # ProxySQL configuration - adapted for Kubernetes
+  proxysql.cnf: |
+    datadir = "/var/lib/proxysql";
+    errorlog = "/test/proxysql/proxysql.log";
+    admin_variables =
+    {
+      mysql_ifaces = "0.0.0.0:6032";
+      admin_credentials = "admin:admin;radmin:radmin";
+      web_enabled = "true";
+      web_port = 6080;
+      stats_credentials = "stats:stats";
+      debug = True;
+    };
+    mysql_variables =
+    {
+      threads = 4;
+      max_connections = 10240;
+      have_compress = True;
+      poll_timeout = 2000;
+      interfaces = "0.0.0.0:6033";
+      stacksize = 1048576;
+      max_allowed_packet = 16777216;
+      connect_timeout_server = 20000;
+      connect_timeout_server_max = 20000;
+      monitor_username = "proxysql";
+      monitor_password = "";
+      monitor_history = 600000;
+      monitor_connect_interval = 60000;
+      monitor_ping_interval = 10000;
+      monitor_read_only_interval = 1000;
+      monitor_read_only_timeout = 500;
+      monitor_writer_is_also_reader = False;
+      commands_stats = True;
+      sessions_sort = True;
+      connect_retries_on_failure = 10;
+      free_connections_pct = 90;
+      connection_warming = True;
+      eventslog_filesize = 104857600;
+      eventslog_default_log = 1;
+      auditlog_filesize = 104857600;
+    };
+    mysql_servers =
+    (
+      {
+        address = "bmysql";  # Using K8s service name
+        port = 3306;
+        hostgroup = 0;
+        max_connections = 100;
+        max_latency_ms = 200;
+      }
+    );
+    mysql_users =
+    (
+      {
+        username = "root";
+      },
+      {
+        username = "policy";
+      },
+      {
+        username = "sa";
+      },
+      {
+        username = "sa_ro";
+      },
+      {
+        username = "ocsp_resp";
+      },
+      {
+        username = "revoker";
+      },
+      {
+        username = "importer";
+      },
+      {
+        username = "mailer";
+      },
+      {
+        username = "cert_checker";
+      },
+      {
+        username = "test_setup";
+      },
+      {
+        username = "badkeyrevoker";
+      },
+      {
+        username = "incidents_sa";
+      }
+    );
+    mysql_query_rules =
+    (
+      {
+        rule_id = 1;
+        active = 1;
+        match_digest = ".";
+        log = 0;
+        apply = 0;
+      },
+      {
+        rule_id = 10;
+        username = "sa";
+        timeout = 4900;
+      },
+      {
+        rule_id = 11;
+        username = "sa_ro";
+        timeout = 4900;
+      },
+      {
+        rule_id = 16;
+        username = "badkeyrevoker";
+        timeout = 3600000;
+      },
+      {
+        rule_id = 17;
+        username = "mailer";
+        timeout = 1800000;
+      },
+      {
+        rule_id = 18;
+        username = "ocsp_resp";
+        timeout = 4900;
+      }
+    );
+    scheduler =
+    (
+    );
+
+  # Consul configuration - adapted for Kubernetes
+  config.hcl: |
+    client_addr = "0.0.0.0"
+    bind_addr   = "0.0.0.0"  # Bind to all interfaces in K8s
+    log_level   = "ERROR"
+    # Disable TLS for K8s testing to simplify setup
+    enable_agent_tls_for_checks = false
+    ui_config {
+      enabled = true
+    }
+    ports {
+      dns      = 53
+      grpc_tls = 8503
+    }
+    connect {
+      enabled = false
+    }
+
+    # Service definitions adapted for Kubernetes environment
+    # These will be dynamically registered by test pods
+    services {
+      id      = "email-exporter-a"
+      name    = "email-exporter"
+      address = "localhost"  # Tests run in same pod
+      port    = 9603
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "boulder-a"
+      name    = "boulder"
+      address = "localhost"
+    }
+
+    services {
+      id      = "ca-a"
+      name    = "ca"
+      address = "localhost"
+      port    = 9393
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "ca-b"
+      name    = "ca"
+      address = "localhost"
+      port    = 9493
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "crl-storer-a"
+      name    = "crl-storer"
+      address = "localhost"
+      port    = 9309
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "dns-a"
+      name    = "dns"
+      address = "localhost"
+      port    = 8053
+      tags    = ["udp"]
+    }
+
+    services {
+      id      = "dns-b"
+      name    = "dns"
+      address = "localhost"
+      port    = 8054
+      tags    = ["udp"]
+    }
+
+    services {
+      id      = "nonce-taro-a"
+      name    = "nonce-taro"
+      address = "localhost"
+      port    = 9301
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "nonce-taro-b"
+      name    = "nonce-taro"
+      address = "localhost"
+      port    = 9501
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "nonce-zinc"
+      name    = "nonce-zinc"
+      address = "localhost"
+      port    = 9401
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "publisher-a"
+      name    = "publisher"
+      address = "localhost"
+      port    = 9391
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "publisher-b"
+      name    = "publisher"
+      address = "localhost"
+      port    = 9491
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "ra-a"
+      name    = "ra"
+      address = "localhost"
+      port    = 9394
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "ra-b"
+      name    = "ra"
+      address = "localhost"
+      port    = 9494
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "sa-a"
+      name    = "sa"
+      address = "localhost"
+      port    = 9395
+      tags    = ["tcp"]
+      checks = [
+        {
+          id              = "sa-a-grpc"
+          name            = "sa-a-grpc"
+          grpc            = "localhost:9395"
+          grpc_use_tls    = false
+          interval        = "2s"
+        }
+      ]
+    }
+
+    services {
+      id      = "sa-b"
+      name    = "sa"
+      address = "localhost"
+      port    = 9495
+      tags    = ["tcp"]
+      checks = [
+        {
+          id              = "sa-b-grpc"
+          name            = "sa-b-grpc"
+          grpc            = "localhost:9495"
+          grpc_use_tls    = false
+          interval        = "2s"
+        }
+      ]
+    }
+
+    services {
+      id      = "va-a"
+      name    = "va"
+      address = "localhost"
+      port    = 9392
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "va-b"
+      name    = "va"
+      address = "localhost"
+      port    = 9492
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "bredis3"
+      name    = "redisratelimits"
+      address = "bredis-1"
+      port    = 6379
+      tags    = ["tcp"]
+    }
+
+    services {
+      id      = "bredis4"
+      name    = "redisratelimits"
+      address = "bredis-2"
+      port    = 6379
+      tags    = ["tcp"]
+    }
+
+---
+# Test configuration files for config-next ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-test-config-next
+  labels:
+    app: boulder-test
+    component: config-next
+data:
+  # Placeholder for config-next files
+  # These would be populated with the actual config-next files
+  placeholder.json: |
+    {
+      "note": "This ConfigMap would contain test/config-next/* files"
+    }

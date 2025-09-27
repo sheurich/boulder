@@ -1,0 +1,665 @@
+---
+# Challenge Test Server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chall-test-srv-certs
+  namespace: boulder-test
+data:
+  # DoH certificates - these would need to be mounted from the cert generation
+  cert.pem: |
+    # This will be populated by the certificate generation process
+  key.pem: |
+    # This will be populated by the certificate generation process
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chall-test-srv
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    network-segment: public1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chall-test-srv
+  template:
+    metadata:
+      labels:
+        app: chall-test-srv
+        network-segment: public1
+    spec:
+      containers:
+      - name: chall-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/chall-test-srv"]
+        args:
+          - "--defaultIPv4=10.244.0.2"  # This should be the pod IP or service IP
+          - "--defaultIPv6="
+          - "--dns01=:8053,:8054"
+          - "--doh=:8343,:8443"
+          - "--doh-cert=/certs/cert.pem"
+          - "--doh-cert-key=/certs/key.pem"
+          - "--management=:8055"
+          - "--http01=:80"
+          - "--https01=:443"
+          - "--tlsalpn01=:5001"
+        ports:
+        - containerPort: 80
+          name: http01
+        - containerPort: 443
+          name: https01
+        - containerPort: 5001
+          name: tlsalpn01
+        - containerPort: 8053
+          name: dns01-1
+        - containerPort: 8054
+          name: dns01-2
+        - containerPort: 8055
+          name: management
+        - containerPort: 8343
+          name: doh-http
+        - containerPort: 8443
+          name: doh-https
+        env:
+        - name: FAKE_DNS
+          value: "10.244.0.2"  # Pod IP or service ClusterIP
+        - name: BOULDER_CONFIG_DIR
+          value: "test/config"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: chall-certs
+          mountPath: /certs
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: chall-certs
+        configMap:
+          name: chall-test-srv-certs
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chall-test-srv
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    network-segment: public1
+spec:
+  selector:
+    app: chall-test-srv
+  ports:
+  - name: http01
+    port: 80
+    targetPort: 80
+  - name: https01
+    port: 443
+    targetPort: 443
+  - name: tlsalpn01
+    port: 5001
+    targetPort: 5001
+  - name: dns01-1
+    port: 8053
+    targetPort: 8053
+    protocol: UDP
+  - name: dns01-2
+    port: 8054
+    targetPort: 8054
+    protocol: UDP
+  - name: management
+    port: 8055
+    targetPort: 8055
+  - name: doh-http
+    port: 8343
+    targetPort: 8343
+  - name: doh-https
+    port: 8443
+    targetPort: 8443
+---
+# CT Test Server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ct-test-srv-config
+  namespace: boulder-test
+data:
+  ct-test-srv.json: |
+    {
+      "Personalities": [
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4600",
+          "PrivKey": "MHcCAQEEIArwh8VhAPXaUocPILwSJrQF1E2OXtY7O2aJyjGIR7UPoAoGCCqGSM49AwEHoUQDQgAExhriVaEwBOtdNzg5EOtJBHl/u+ua1FtCR/CBXQ1kvpFelcP3gozLNXyxV/UexuifpmzTN31CdfdHv1kK3KDIxQ==",
+          "FlakinessRate": 1
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4601",
+          "PrivKey": "MHcCAQEEINk7TLYXyJznFl32p62xfZZTarZJTWZe+8u1HF3xmn2doAoGCCqGSM49AwEHoUQDQgAE7uzW0zXQpWIk7MZUBdTu1muNzekMCIv/kn16+ifndQ584DElobOJ0ZlcACz9WdFyGTjOCfAqBmFybX2OJKfFVg==",
+          "FlakinessRate": 1
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4602",
+          "PrivKey": "MHcCAQEEIFJD5JlN30x8i3EkSHF8UuB4fG2WEqXrDD4NiswocRseoAoGCCqGSM49AwEHoUQDQgAE/s5W5OHfowdLA7KerJ+mOizfHJE6Snfib8ueoBYl8Y12lpOoJTtCmmrx4m9KAb9AptInWpGrIaLY+5Y29l2eGw==",
+          "FlakinessRate": 1
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4603",
+          "PrivKey": "MHcCAQEEIDrGahcizJgStF+Zf9h29wLZhNKyasQ2TMieIdHNn3ZBoAoGCCqGSM49AwEHoUQDQgAE2EFdA2UBfbJ2Sw1413hBN9YESyABmTGbdgcMh0l/GyV3eFrFjcVS0laNphkfRZ+qkcMbeF+IIHqVzxHAM/2mQQ==",
+          "FlakinessRate": 1
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4604",
+          "PrivKey": "MHcCAQEEIH6JmZXVRq2KDWJinKsDxv7gDzw0WEepfXu5s1VQvAHfoAoGCCqGSM49AwEHoUQDQgAEAMSHwrzvr/KvNmUT55+uQo7CXQLPx1X+qEdKGekUg1q/InN/E37bCY/x45wC00qgiE0D3xoxnUJbKaCQcAX39w==",
+          "FlakinessRate": 2
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4605",
+          "PrivKey": "MHcCAQEEIOkBiM7jy65TfsJTMxDwIcv3TD/FVTe/aXG4QUUXiQ98oAoGCCqGSM49AwEHoUQDQgAEzmpksKS/mHgJZ821po3ldwonsz3K19jwsZgNSGYvEuzAVtWbGfY+6aUXua7f8WK8l2amHETISOY4JTRwk5QFyw==",
+          "FlakinessRate": 98
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4606",
+          "PrivKey": "MHcCAQEEIHIAfD/dxvjxSLAW22Pz8xZR7eCJp2VcVgMID+VmhHtNoAoGCCqGSM49AwEHoUQDQgAE31BxBVCdehxOC35jJzvAPNrU4ZjNXbmxS+zSN5DSkpJWQUp5wUHPGnXiSCtx7jXnTYLVzslIyXWpNN8m8BiKjQ==",
+          "FlakinessRate": 2
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4607",
+          "PrivKey": "MHcCAQEEIMly7UpXClsaVP1Con6jTgiL6ZTuarj0kWxdo3NqNJWVoAoGCCqGSM49AwEHoUQDQgAEAjRx6Mhc/U4Ye7NzsZ7bbKMGhKVpGZHpZJMzLzNIveBAPh5OBDHpSdn9RY58t4diH8YLjqCi9o+k1T5RwiFbfQ==",
+          "FlakinessRate": 2
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4608",
+          "PrivKey": "MHcCAQEEIJF8W76HJanaUjvSX/mnjwwtBZ0yq1YD/PPvbWJuLhESoAoGCCqGSM49AwEHoUQDQgAEsHFSkgrlrwIY0PG79tOZhPvBzrnrpbrWa3pG2FfkLeEJQ2Uvgw1oTZZ+oXcrm4Yb3khWDbpkzDbupI+e8xloeA==",
+          "FlakinessRate": 20
+        },
+        {
+          "UserAgent": "boulder/1.0",
+          "Addr": ":4609",
+          "PrivKey": "MHcCAQEEIIazaamUIxkn+ie+qfDAnO9Fmnrm11rGeE+3fFTHjYNdoAoGCCqGSM49AwEHoUQDQgAEMVjHUOxzh2flagPhuEYy/AhAlpD9qqACg4fGcCxOhLU35r21CQXzKDdCHMu69QDFd6EAe8iGFsybg+Yn4/njtA==",
+          "FlakinessRate": 100
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ct-test-srv
+  namespace: boulder-test
+  labels:
+    app: ct-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ct-test-srv
+  template:
+    metadata:
+      labels:
+        app: ct-test-srv
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: ct-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/ct-test-srv"]
+        args:
+        - "--config=/config/ct-test-srv.json"
+        ports:
+        - containerPort: 4600
+        - containerPort: 4601
+        - containerPort: 4602
+        - containerPort: 4603
+        - containerPort: 4604
+        - containerPort: 4605
+        - containerPort: 4606
+        - containerPort: 4607
+        - containerPort: 4608
+        - containerPort: 4609
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: ct-config
+          mountPath: /config
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: ct-config
+        configMap:
+          name: ct-test-srv-config
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ct-test-srv
+  namespace: boulder-test
+  labels:
+    app: ct-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  selector:
+    app: ct-test-srv
+  ports:
+  - name: ct-4600
+    port: 4600
+    targetPort: 4600
+  - name: ct-4601
+    port: 4601
+    targetPort: 4601
+  - name: ct-4602
+    port: 4602
+    targetPort: 4602
+  - name: ct-4603
+    port: 4603
+    targetPort: 4603
+  - name: ct-4604
+    port: 4604
+    targetPort: 4604
+  - name: ct-4605
+    port: 4605
+    targetPort: 4605
+  - name: ct-4606
+    port: 4606
+    targetPort: 4606
+  - name: ct-4607
+    port: 4607
+    targetPort: 4607
+  - name: ct-4608
+    port: 4608
+    targetPort: 4608
+  - name: ct-4609
+    port: 4609
+    targetPort: 4609
+---
+# AIA Test Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aia-test-srv
+  namespace: boulder-test
+  labels:
+    app: aia-test-srv
+    network-segment: public1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aia-test-srv
+  template:
+    metadata:
+      labels:
+        app: aia-test-srv
+        network-segment: public1
+    spec:
+      containers:
+      - name: aia-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/aia-test-srv"]
+        args:
+        - "--addr=:4502"
+        - "--hierarchy=/boulder/test/certs/webpki/"
+        ports:
+        - containerPort: 4502
+          name: http
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aia-test-srv
+  namespace: boulder-test
+  labels:
+    app: aia-test-srv
+    network-segment: public1
+spec:
+  selector:
+    app: aia-test-srv
+  ports:
+  - name: http
+    port: 4502
+    targetPort: 4502
+---
+# S3 Test Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3-test-srv
+  namespace: boulder-test
+  labels:
+    app: s3-test-srv
+    network-segment: public1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: s3-test-srv
+  template:
+    metadata:
+      labels:
+        app: s3-test-srv
+        network-segment: public1
+    spec:
+      containers:
+      - name: s3-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/s3-test-srv"]
+        args:
+        - "--listen=:4501"
+        ports:
+        - containerPort: 4501
+          name: http
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3-test-srv
+  namespace: boulder-test
+  labels:
+    app: s3-test-srv
+    network-segment: public1
+spec:
+  selector:
+    app: s3-test-srv
+  ports:
+  - name: http
+    port: 4501
+    targetPort: 4501
+---
+# Pardot Test Server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pardot-test-srv-config
+  namespace: boulder-test
+data:
+  pardot-test-srv.json: |
+    {
+      "oauthAddr": ":9601",
+      "pardotAddr": ":9602",
+      "expectedClientId": "test-client-id",
+      "expectedClientSecret": "you-shall-not-pass"
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pardot-test-srv
+  namespace: boulder-test
+  labels:
+    app: pardot-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pardot-test-srv
+  template:
+    metadata:
+      labels:
+        app: pardot-test-srv
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: pardot-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/pardot-test-srv"]
+        args:
+        - "--config=/config/pardot-test-srv.json"
+        ports:
+        - containerPort: 9601
+          name: oauth
+        - containerPort: 9602
+          name: pardot
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: pardot-config
+          mountPath: /config
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: pardot-config
+        configMap:
+          name: pardot-test-srv-config
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pardot-test-srv
+  namespace: boulder-test
+  labels:
+    app: pardot-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  selector:
+    app: pardot-test-srv
+  ports:
+  - name: oauth
+    port: 9601
+    targetPort: 9601
+  - name: pardot
+    port: 9602
+    targetPort: 9602
+---
+# Zendesk Test Server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zendesk-test-srv-config
+  namespace: boulder-test
+data:
+  zendesk-test-srv.json: |
+    {
+      "addr": ":9701",
+      "expectedTokenEmail": "admin@example.com",
+      "expectedAPIToken": "VfOskCDktyAXNqsIQEnFErQVm7tfpiUUemlYxkp2",
+      "ticketCapacity": 1000
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zendesk-test-srv
+  namespace: boulder-test
+  labels:
+    app: zendesk-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zendesk-test-srv
+  template:
+    metadata:
+      labels:
+        app: zendesk-test-srv
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: zendesk-test-srv
+        image: letsencrypt/boulder-tools:latest
+        command: ["./bin/zendesk-test-srv"]
+        args:
+        - "--config=/config/zendesk-test-srv.json"
+        ports:
+        - containerPort: 9701
+          name: http
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: zendesk-config
+          mountPath: /config
+        workingDir: /boulder
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: zendesk-config
+        configMap:
+          name: zendesk-test-srv-config
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+          make GO_BUILD_FLAGS=
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zendesk-test-srv
+  namespace: boulder-test
+  labels:
+    app: zendesk-test-srv
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  selector:
+    app: zendesk-test-srv
+  ports:
+  - name: http
+    port: 9701
+    targetPort: 9701

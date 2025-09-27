@@ -1,0 +1,601 @@
+---
+# MySQL Database Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bmysql
+  labels:
+    app: bmysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bmysql
+  template:
+    metadata:
+      labels:
+        app: bmysql
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: mysql
+        image: mariadb:10.11.13
+        env:
+        - name: MYSQL_ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        - name: MYSQL_ROOT_HOST
+          value: "%"
+        args:
+        - --bind-address=0.0.0.0
+        - --slow-query-log
+        - --log-output=TABLE
+        - --log-queries-not-using-indexes=ON
+        - --character-set-server=utf8mb4
+        - --collation-server=utf8mb4_unicode_ci
+        - --innodb-buffer-pool-size=128M
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bmysql
+  labels:
+    app: bmysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: bmysql
+---
+# ProxySQL Service (depends on MySQL)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bproxysql
+  labels:
+    app: bproxysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bproxysql
+  template:
+    metadata:
+      labels:
+        app: bproxysql
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      initContainers:
+      - name: wait-for-mysql
+        image: mariadb:10.11.13
+        command: ['bash', '-c']
+        args:
+        - |
+          until mysqladmin ping -h bmysql --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL is ready"
+      containers:
+      - name: proxysql
+        image: proxysql/proxysql:2.5.4
+        command:
+        - proxysql
+        - -f
+        - --idle-threads
+        - -c
+        - /etc/proxysql/proxysql.cnf
+        - --initial
+        ports:
+        - containerPort: 6032
+        - containerPort: 6033
+        - containerPort: 6080
+        volumeMounts:
+        - name: proxysql-config
+          mountPath: /etc/proxysql
+          readOnly: true
+        - name: proxysql-data
+          mountPath: /var/lib/proxysql
+        readinessProbe:
+          tcpSocket:
+            port: 6033
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 6033
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: proxysql-config
+        configMap:
+          name: boulder-test-config
+          items:
+          - key: proxysql.cnf
+            path: proxysql.cnf
+      - name: proxysql-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bproxysql
+  labels:
+    app: bproxysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - name: admin
+    port: 6032
+    targetPort: 6032
+  - name: mysql
+    port: 6033
+    targetPort: 6033
+  selector:
+    app: bproxysql
+---
+# Redis Service 1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bredis-1
+  labels:
+    app: bredis-1
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bredis-1
+  template:
+    metadata:
+      labels:
+        app: bredis-1
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: redis
+        image: redis:6.2.7
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis
+          readOnly: true
+        - name: redis-data
+          mountPath: /data
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+      volumes:
+      - name: redis-config
+        configMap:
+          name: boulder-test-config
+          items:
+          - key: redis-ratelimits.config
+            path: redis.conf
+      - name: redis-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-1
+  labels:
+    app: bredis-1
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: bredis-1
+---
+# Redis Service 2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bredis-2
+  labels:
+    app: bredis-2
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bredis-2
+  template:
+    metadata:
+      labels:
+        app: bredis-2
+        network-segment: internal
+        app-type: infrastructure
+    spec:
+      containers:
+      - name: redis
+        image: redis:6.2.7
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis
+          readOnly: true
+        - name: redis-data
+          mountPath: /data
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+      volumes:
+      - name: redis-config
+        configMap:
+          name: boulder-test-config
+          items:
+          - key: redis-ratelimits.config
+            path: redis.conf
+      - name: redis-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-2
+  labels:
+    app: bredis-2
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: bredis-2
+---
+# Consul Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bconsul
+  labels:
+    app: bconsul
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bconsul
+  template:
+    metadata:
+      labels:
+        app: bconsul
+        network-segment: internal
+        app-type: infrastructure
+        external-access: "true"
+    spec:
+      containers:
+      - name: consul
+        image: hashicorp/consul:1.15.4
+        command:
+        - consul
+        - agent
+        - -dev
+        - -client=0.0.0.0
+        - -config-format=hcl
+        - -config-file=/etc/consul/config.hcl
+        ports:
+        - containerPort: 8500
+        - containerPort: 8300
+        - containerPort: 8301
+        - containerPort: 8302
+        - containerPort: 8600
+          protocol: UDP
+        - containerPort: 8503
+        - containerPort: 53
+          protocol: UDP
+        volumeMounts:
+        - name: consul-config
+          mountPath: /etc/consul
+          readOnly: true
+        - name: consul-data
+          mountPath: /consul/data
+        readinessProbe:
+          httpGet:
+            path: /v1/status/leader
+            port: 8500
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /v1/status/leader
+            port: 8500
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: consul-config
+        configMap:
+          name: boulder-test-config
+          items:
+          - key: config.hcl
+            path: config.hcl
+      - name: consul-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bconsul
+  labels:
+    app: bconsul
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - name: http
+    port: 8500
+    targetPort: 8500
+  - name: rpc
+    port: 8300
+    targetPort: 8300
+  - name: serf-lan
+    port: 8301
+    targetPort: 8301
+  - name: serf-wan
+    port: 8302
+    targetPort: 8302
+  - name: dns
+    port: 8600
+    targetPort: 8600
+    protocol: UDP
+  selector:
+    app: bconsul
+---
+# Jaeger Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bjaeger
+  labels:
+    app: bjaeger
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bjaeger
+  template:
+    metadata:
+      labels:
+        app: bjaeger
+        network-segment: internal
+        app-type: infrastructure
+        external-access: "true"
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.50
+        ports:
+        - containerPort: 16686
+        - containerPort: 14268
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bjaeger
+  labels:
+    app: bjaeger
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - name: ui
+    port: 16686
+    targetPort: 16686
+  - name: collector
+    port: 14268
+    targetPort: 14268
+  selector:
+    app: bjaeger
+---
+# PKI Metal Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bpkimetal
+  labels:
+    app: bpkimetal
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bpkimetal
+  template:
+    metadata:
+      labels:
+        app: bpkimetal
+        network-segment: internal
+        app-type: infrastructure
+        external-access: "true"
+    spec:
+      containers:
+      - name: pkimetal
+        image: ghcr.io/pkimetal/pkimetal:v1.20.0
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpkimetal
+  labels:
+    app: bpkimetal
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: bpkimetal

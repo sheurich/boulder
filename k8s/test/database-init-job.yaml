@@ -1,0 +1,229 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-init
+  labels:
+    app: boulder-database-init
+    component: database-setup
+spec:
+  template:
+    metadata:
+      labels:
+        app: boulder-database-init
+        component: database-setup
+    spec:
+      restartPolicy: Never
+      # Init containers to wait for dependencies
+      initContainers:
+      - name: wait-for-mysql
+        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        imagePullPolicy: IfNotPresent
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for MySQL to be ready..."
+          until python3 -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('bmysql', 3306)); s.close()" 2>/dev/null; do
+            echo "MySQL not ready, waiting..."
+            sleep 3
+          done
+          echo "MySQL is ready"
+      - name: wait-for-proxysql
+        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        imagePullPolicy: IfNotPresent
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for ProxySQL to be ready..."
+          until python3 -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('bproxysql', 6033)); s.close()" 2>/dev/null; do
+            echo "ProxySQL not ready, waiting..."
+            sleep 3
+          done
+          echo "ProxySQL is ready"
+      containers:
+      - name: database-init
+        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        imagePullPolicy: IfNotPresent
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -o errexit
+          set -o nounset
+          set -o pipefail
+
+          echo "Starting Boulder database initialization..."
+          cd /boulder
+
+          # Database and environment configuration
+          DBS="boulder_sa incidents_sa"
+          ENVS="test integration"
+
+          # Database connection for containers
+          dbconn="-u root -h bmysql --port 3306"
+
+          # Configure MariaDB settings for Boulder
+          echo "Configuring MariaDB settings..."
+          mysql ${dbconn} -e "SET GLOBAL binlog_format = 'MIXED';" || echo "Failed to set binlog_format, continuing..."
+          mysql ${dbconn} -e "SET GLOBAL max_connections = 500;" || echo "Failed to set max_connections, continuing..."
+
+          # Function to create database
+          create_empty_db() {
+            local db="${1}"
+            local dbconn="${2}"
+            echo "Creating database: ${db}"
+            create_script="DROP DATABASE IF EXISTS \`${db}\`; CREATE DATABASE IF NOT EXISTS \`${db}\`;"
+            mysql ${dbconn} -e "${create_script}" || {
+              echo "ERROR: Unable to create database ${db}"
+              return 1
+            }
+            echo "Database ${db} created successfully"
+          }
+
+          # Determine database path based on config
+          if [[ "${BOULDER_CONFIG_DIR:-test/config}" == "test/config-next" ]]; then
+            dbpath="./sa/db-next"
+            echo "Using next-generation database schema from ${dbpath}"
+          else
+            dbpath="./sa/db"
+            echo "Using standard database schema from ${dbpath}"
+          fi
+
+          # Process each database and environment combination
+          for db in $DBS; do
+            for env in $ENVS; do
+              dbname="${db}_${env}"
+              echo
+              echo "=== Processing ${dbname} ==="
+
+              # Check if database already exists and has migrations
+              if mysql ${dbconn} -e "SHOW DATABASES;" | grep -q "${dbname}"; then
+                echo "Database ${dbname} already exists"
+                # Check if it has the gorp_migrations table (indicates it's been migrated)
+                if mysql ${dbconn} -D "${dbname}" -e "SHOW TABLES LIKE 'gorp_migrations';" 2>/dev/null | grep -q "gorp_migrations"; then
+                  migration_count=$(mysql ${dbconn} -D "${dbname}" -e "SELECT COUNT(*) as count FROM gorp_migrations;" -N -s 2>/dev/null || echo "0")
+                  if [ "$migration_count" -gt "0" ]; then
+                    echo "Database ${dbname} already has ${migration_count} migrations - skipping"
+                    continue
+                  fi
+                fi
+                echo "Database ${dbname} exists but appears uninitialized - recreating"
+                create_empty_db "${dbname}" "${dbconn}"
+              else
+                echo "Database ${dbname} doesn't exist - creating"
+                create_empty_db "${dbname}" "${dbconn}"
+              fi
+
+              # Run database migrations
+              echo "Running migrations for ${dbname}..."
+              cd "${dbpath}"
+
+              # Ensure sql-migrate is available
+              if ! command -v sql-migrate >/dev/null 2>&1; then
+                echo "Installing sql-migrate..."
+                go install github.com/rubenv/sql-migrate/...@latest
+              fi
+
+              # Run migrations with error handling
+              migration_result=$(sql-migrate up -env="${dbname}" 2>&1) || migration_failed=true
+
+              if [[ "${migration_result}" == "Migration failed"* ]] || [[ "${migration_failed:-false}" == "true" ]]; then
+                echo "Migration failed for ${dbname} - dropping and recreating database"
+                echo "Migration error: ${migration_result}"
+                cd /boulder
+                create_empty_db "${dbname}" "${dbconn}"
+                cd "${dbpath}"
+
+                echo "Retrying migrations for ${dbname}..."
+                if ! sql-migrate up -env="${dbname}"; then
+                  echo "ERROR: Migration failed for ${dbname} after recreation"
+                  exit 1
+                fi
+                echo "Migrations completed successfully for ${dbname} after recreation"
+              else
+                echo "Migrations completed for ${dbname}: ${migration_result}"
+              fi
+
+              # Create database users
+              cd /boulder
+              USERS_SQL="sa/db-users/${db}.sql"
+              echo "Adding users from ${USERS_SQL} to ${dbname}..."
+
+              if [ -f "${USERS_SQL}" ]; then
+                # Modify the SQL to use '%' instead of 'localhost' for containerized environment
+                # This allows connections from any host within the cluster
+                sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
+                  mysql ${dbconn} -D "${dbname}" -f || {
+                    echo "ERROR: Failed to add users from ${USERS_SQL} to ${dbname}"
+                    exit 1
+                  }
+                echo "Successfully added users from ${USERS_SQL} to ${dbname}"
+              else
+                echo "WARNING: Users SQL file not found: ${USERS_SQL}"
+              fi
+
+              # Verify database setup
+              echo "Verifying database ${dbname} setup..."
+              table_count=$(mysql ${dbconn} -D "${dbname}" -e "SHOW TABLES;" -N -s | wc -l)
+              user_count=$(mysql ${dbconn} -D "${dbname}" -e "SELECT COUNT(*) FROM mysql.user WHERE Db='${dbname}';" -N -s 2>/dev/null || echo "0")
+              echo "Database ${dbname} has ${table_count} tables and ${user_count} user grants"
+            done
+          done
+
+          echo
+          echo "=== Database Initialization Complete ==="
+          echo "Successfully initialized the following databases:"
+          for db in $DBS; do
+            for env in $ENVS; do
+              dbname="${db}_${env}"
+              echo "  - ${dbname}"
+            done
+          done
+
+          # Verify all databases are accessible via ProxySQL
+          echo
+          echo "=== Verifying ProxySQL Connectivity ==="
+          proxysql_conn="-u root -h bproxysql --port 6033"
+
+          for db in $DBS; do
+            for env in $ENVS; do
+              dbname="${db}_${env}"
+              echo "Testing ProxySQL connection to ${dbname}..."
+              if mysql ${proxysql_conn} -D "${dbname}" -e "SELECT 1;" >/dev/null 2>&1; then
+                echo "✓ ProxySQL connection to ${dbname} successful"
+              else
+                echo "⚠ ProxySQL connection to ${dbname} failed, but continuing..."
+              fi
+            done
+          done
+
+          echo "Database initialization job completed successfully!"
+        workingDir: /boulder
+        env:
+        - name: BOULDER_CONFIG_DIR
+          value: "$BOULDER_CONFIG_DIR"
+        - name: GOPATH
+          value: "/tmp/go"
+        - name: GOCACHE
+          value: "/tmp/go-cache"
+        - name: PATH
+          value: "/tmp/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        volumeMounts:
+        - name: go-cache
+          mountPath: /tmp/go-cache
+        - name: go-path
+          mountPath: /tmp/go
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+      volumes:
+      - name: go-cache
+        emptyDir:
+          sizeLimit: 500Mi
+      - name: go-path
+        emptyDir:
+          sizeLimit: 1Gi
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800  # 30 minutes timeout

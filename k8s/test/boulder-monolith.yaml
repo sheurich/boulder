@@ -1,0 +1,322 @@
+---
+# Boulder Monolith Deployment
+# This deployment runs all Boulder services together using startservers.py
+# in a single pod, similar to the docker-compose boulder service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boulder-monolith
+  namespace: boulder-test
+  labels:
+    app: boulder-monolith
+    network-segment: internal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boulder-monolith
+  template:
+    metadata:
+      labels:
+        app: boulder-monolith
+        network-segment: internal
+    spec:
+      containers:
+      - name: boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["python3", "./test/startservers.py"]
+        ports:
+        # WFE2 - ACMEv2 API
+        - containerPort: 4001
+          name: acmev2
+        # SFE - Subscriber Frontend
+        - containerPort: 4003
+          name: sfe
+        # Debug ports for all services
+        - containerPort: 8001
+          name: ca-debug-1
+        - containerPort: 8002
+          name: ra-debug-1
+        - containerPort: 8003
+          name: sa-debug-1
+        - containerPort: 8004
+          name: va-debug-1
+        - containerPort: 8009
+          name: pub-debug-1
+        - containerPort: 8011
+          name: rva-debug-a
+        - containerPort: 8012
+          name: rva-debug-b
+        - containerPort: 8013
+          name: wfe2-debug
+        - containerPort: 8015
+          name: sfe-debug
+        - containerPort: 8016
+          name: log-val-debug
+        - containerPort: 8020
+          name: bad-key-debug
+        - containerPort: 8023
+          name: rva-debug-c
+        - containerPort: 8101
+          name: ca-debug-2
+        - containerPort: 8102
+          name: ra-debug-2
+        - containerPort: 8103
+          name: sa-debug-2
+        - containerPort: 8104
+          name: va-debug-2
+        - containerPort: 8109
+          name: pub-debug-2
+        - containerPort: 8111
+          name: nonce-debug-1
+        - containerPort: 8112
+          name: nonce-debug-2
+        - containerPort: 8113
+          name: nonce-debug-3
+        - containerPort: 8114
+          name: email-debug
+        - containerPort: 8118
+          name: ra-sct-debug-1
+        - containerPort: 8119
+          name: ra-sct-debug-2
+        # gRPC ports for services
+        - containerPort: 9391
+          name: publisher-1
+        - containerPort: 9392
+          name: va-1
+        - containerPort: 9393
+          name: ca-1
+        - containerPort: 9394
+          name: ra-1
+        - containerPort: 9395
+          name: sa-1
+        - containerPort: 9397
+          name: remoteva-a
+        - containerPort: 9491
+          name: publisher-2
+        - containerPort: 9492
+          name: va-2
+        - containerPort: 9493
+          name: ca-2
+        - containerPort: 9494
+          name: ra-2
+        - containerPort: 9495
+          name: sa-2
+        - containerPort: 9498
+          name: remoteva-b
+        - containerPort: 9499
+          name: remoteva-c
+        - containerPort: 9594
+          name: ra-sct-1
+        - containerPort: 9694
+          name: ra-sct-2
+        # Nonce service ports
+        - containerPort: 9301
+          name: nonce-taro-1
+        - containerPort: 9401
+          name: nonce-zinc-1
+        - containerPort: 9501
+          name: nonce-taro-2
+        # Other service ports
+        - containerPort: 9309
+          name: crl-storer
+        - containerPort: 9603
+          name: email-export
+        - containerPort: 9667
+          name: crl-debug
+        env:
+        - name: FAKE_DNS
+          value: "10.244.0.2"  # This should be set to the chall-test-srv service IP
+        - name: BOULDER_CONFIG_DIR
+          value: "test/config"
+        - name: GOCACHE
+          value: "/boulder/.gocache/go-build"
+        - name: GORACE
+          value: "halt_on_error=1"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: gocache
+          mountPath: /boulder/.gocache
+        workingDir: /boulder
+        livenessProbe:
+          httpGet:
+            path: /debug/vars
+            port: 8013  # WFE2 debug port
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /debug/vars
+            port: 8013  # WFE2 debug port
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: gocache
+        emptyDir: {}
+      initContainers:
+      - name: setup-boulder
+        image: letsencrypt/boulder-tools:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          set -e
+          echo "Setting up Boulder source..."
+          cd /boulder-setup
+          cp -r . /boulder/
+          cd /boulder
+
+          echo "Building Boulder binaries..."
+          make GO_BUILD_FLAGS=
+
+          echo "Setup complete"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-source
+          mountPath: /boulder-setup
+        - name: gocache
+          mountPath: /boulder/.gocache
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+      volumes:
+      - name: boulder-source
+        hostPath:
+          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+      # DNS configuration to use consul for service discovery
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+        - "10.96.0.10"  # kube-dns
+        - "10.244.0.10" # consul service IP (adjust as needed)
+        searches:
+        - "boulder-test.svc.cluster.local"
+        - "svc.cluster.local"
+        - "cluster.local"
+        options:
+        - name: ndots
+          value: "5"
+      hostAliases:
+      # These mimic the extra_hosts configuration from docker-compose
+      - ip: "10.244.0.2"  # Boulder monolith pod IP (will be updated by k8s)
+        hostnames:
+        - "ca.example.org"
+        - "integration.trust"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-monolith
+  namespace: boulder-test
+  labels:
+    app: boulder-monolith
+    network-segment: internal
+spec:
+  selector:
+    app: boulder-monolith
+  type: ClusterIP
+  ports:
+  # Public API ports
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+  # Debug ports (useful for monitoring and debugging)
+  - name: wfe2-debug
+    port: 8013
+    targetPort: 8013
+  - name: sfe-debug
+    port: 8015
+    targetPort: 8015
+  # Internal gRPC service ports (for inter-service communication if needed)
+  - name: ra-1
+    port: 9394
+    targetPort: 9394
+  - name: ra-2
+    port: 9494
+    targetPort: 9494
+  - name: sa-1
+    port: 9395
+    targetPort: 9395
+  - name: sa-2
+    port: 9495
+    targetPort: 9495
+  - name: ca-1
+    port: 9393
+    targetPort: 9393
+  - name: ca-2
+    port: 9493
+    targetPort: 9493
+  - name: va-1
+    port: 9392
+    targetPort: 9392
+  - name: va-2
+    port: 9492
+    targetPort: 9492
+  - name: publisher-1
+    port: 9391
+    targetPort: 9391
+  - name: publisher-2
+    port: 9491
+    targetPort: 9491
+---
+# Headless service for internal service discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-monolith-headless
+  namespace: boulder-test
+  labels:
+    app: boulder-monolith
+    network-segment: internal
+spec:
+  selector:
+    app: boulder-monolith
+  clusterIP: None
+  ports:
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+---
+# Service for external access (optional, can be LoadBalancer or NodePort)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-monolith-external
+  namespace: boulder-test
+  labels:
+    app: boulder-monolith
+    network-segment: public1
+spec:
+  selector:
+    app: boulder-monolith
+  type: NodePort  # Change to LoadBalancer if you have a cloud provider
+  ports:
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+    nodePort: 30001  # External access on node port 30001
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+    nodePort: 30003  # External access on node port 30003

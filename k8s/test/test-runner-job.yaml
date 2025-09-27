@@ -1,0 +1,191 @@
+# Template for running Boulder tests in Kubernetes
+# This will be used by tk8.sh to create specific test jobs
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: boulder-test-runner
+  labels:
+    app: boulder-test
+    component: test-runner
+spec:
+  template:
+    metadata:
+      labels:
+        app: boulder-test
+        component: test-runner
+    spec:
+      restartPolicy: Never
+      # Service dependency verification init containers
+      initContainers:
+      - name: wait-for-mysql
+        image: letsencrypt/boulder-tools:latest
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for MySQL..."
+          until mysqladmin ping -h bmysql --silent; do
+            echo "MySQL not ready, waiting..."
+            sleep 2
+          done
+          echo "MySQL is ready"
+      - name: wait-for-redis-1
+        image: letsencrypt/boulder-tools:latest
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for Redis 1..."
+          until redis-cli -h bredis-1 ping | grep -q PONG; do
+            echo "Redis 1 not ready, waiting..."
+            sleep 2
+          done
+          echo "Redis 1 is ready"
+      - name: wait-for-redis-2
+        image: letsencrypt/boulder-tools:latest
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for Redis 2..."
+          until redis-cli -h bredis-2 ping | grep -q PONG; do
+            echo "Redis 2 not ready, waiting..."
+            sleep 2
+          done
+          echo "Redis 2 is ready"
+      - name: wait-for-consul
+        image: letsencrypt/boulder-tools:latest
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for Consul..."
+          until curl -f http://bconsul:8500/v1/status/leader >/dev/null 2>&1; do
+            echo "Consul not ready, waiting..."
+            sleep 2
+          done
+          echo "Consul is ready"
+      - name: wait-for-proxysql
+        image: letsencrypt/boulder-tools:latest
+        command: ['bash', '-c']
+        args:
+        - |
+          echo "Waiting for ProxySQL..."
+          until nc -z bproxysql 6033; do
+            echo "ProxySQL not ready, waiting..."
+            sleep 2
+          done
+          echo "ProxySQL is ready"
+      containers:
+      - name: boulder-test
+        image: letsencrypt/boulder-tools:latest
+        command: ["bash", "-c"]
+        args:
+        - |
+          echo "Starting Boulder tests..."
+
+          # This will be replaced by tk8.sh with actual test commands
+          echo "Test command placeholder - this should be overridden by tk8.sh"
+
+          # Default test execution (will be overridden)
+          cd /boulder
+          ./test.sh
+        workingDir: /boulder
+        env:
+        - name: BOULDER_CONFIG_DIR
+          value: "test/config"
+        - name: FAKE_DNS
+          value: "bconsul"  # Use service DNS names in K8s
+        - name: GOCACHE
+          value: "/tmp/.gocache/go-build"
+        - name: GOMODCACHE
+          value: "/tmp/.gocache/go-mod"
+        # Database connections
+        - name: MYSQL_DSN_SA
+          value: "sa@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_SA_RO
+          value: "sa_ro@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_INCIDENTS_SA
+          value: "incidents_sa@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_POLICY
+          value: "policy@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_MAILER
+          value: "mailer@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_CERT_CHECKER
+          value: "cert_checker@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_OCSP_RESP
+          value: "ocsp_resp@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_REVOKER
+          value: "revoker@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_IMPORTER
+          value: "importer@tcp(bmysql:3306)/"
+        - name: MYSQL_DSN_BADKEYREVOKER
+          value: "badkeyrevoker@tcp(bmysql:3306)/"
+        # Service hosts
+        - name: MYSQL_HOST
+          value: "bmysql"
+        - name: PROXYSQL_HOST
+          value: "bproxysql"
+        - name: REDIS_HOST_1
+          value: "bredis-1"
+        - name: REDIS_HOST_2
+          value: "bredis-2"
+        - name: CONSUL_HOST
+          value: "bconsul"
+        - name: JAEGER_HOST
+          value: "bjaeger"
+        - name: PKIMETAL_HOST
+          value: "bpkimetal"
+        # Test environment settings
+        - name: BOULDER_TOOLS_TAG
+          value: "latest"
+        volumeMounts:
+        # Mount the certificate storage from the cert generation job
+        - name: cert-storage
+          mountPath: /boulder/test/certs
+          readOnly: true
+        # Go build cache
+        - name: gocache
+          mountPath: /tmp/.gocache
+        # Test configuration
+        - name: test-config
+          mountPath: /boulder/test/config-k8s
+          readOnly: true
+        - name: test-config-next
+          mountPath: /boulder/test/config-next-k8s
+          readOnly: true
+        # Coverage output
+        - name: coverage-output
+          mountPath: /boulder/test/coverage
+        # SoftHSM tokens
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+      volumes:
+      # Certificate storage from the cert generation job
+      - name: cert-storage
+        emptyDir:
+          sizeLimit: 100Mi
+      # Go build cache
+      - name: gocache
+        emptyDir:
+          sizeLimit: 2Gi
+      # Test configurations
+      - name: test-config
+        configMap:
+          name: boulder-test-config
+      - name: test-config-next
+        configMap:
+          name: boulder-test-config-next
+      # Coverage output
+      - name: coverage-output
+        emptyDir:
+          sizeLimit: 1Gi
+      # SoftHSM tokens
+      - name: softhsm-tokens
+        emptyDir:
+          sizeLimit: 100Mi
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600  # 1 hour timeout

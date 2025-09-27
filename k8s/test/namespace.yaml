@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: boulder-test
+  labels:
+    app: boulder-test
+    created-by: tk8.sh
+    environment: test

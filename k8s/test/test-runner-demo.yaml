@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: boulder-test-demo
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: boulder-unit-tests
+  namespace: boulder-test-demo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      name: boulder-unit-tests
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: test-runner
+        image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "=== Boulder Unit Tests in Kubernetes ==="
+          echo
+
+          # Check if we're in the correct directory
+          if [ -d "/go/src/github.com/letsencrypt/boulder" ]; then
+            cd /go/src/github.com/letsencrypt/boulder
+          elif [ -d "/boulder" ]; then
+            cd /boulder
+          else
+            echo "Boulder source not found!"
+            exit 1
+          fi
+
+          echo "Working directory: $(pwd)"
+          echo "Go version: $(go version)"
+          echo
+
+          # Run a simple unit test package
+          echo "Running unit tests for cmd/boulder-va..."
+          echo "========================================="
+
+          # Set required environment variables
+          export GO111MODULE=on
+          export GOFLAGS="-mod=vendor"
+          export CGO_ENABLED=1
+
+          # Run the tests
+          go test -v -p=1 ./cmd/boulder-va 2>&1 | head -50
+
+          echo
+          echo "========================================="
+          echo "Test execution completed!"
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+          requests:
+            memory: "1Gi"
+            cpu: "500m"

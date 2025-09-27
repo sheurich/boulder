@@ -1,0 +1,353 @@
+---
+# LoadBalancer Services for Boulder Kubernetes Deployment
+# Provides external access to ACME endpoints and challenge validation services
+# Replicates the port exposure from docker-compose configuration
+
+# WFE2 LoadBalancer - ACME v2 Protocol Endpoints
+# Primary external interface for ACME clients
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-wfe2-lb
+  namespace: boulder-test
+  labels:
+    app: boulder-wfe2
+    service-type: loadbalancer
+    network-segment: public1
+  annotations:
+    # Cloud provider specific annotations for external IP allocation
+    # These may need to be adjusted based on your cloud provider
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+    # For AWS ELB
+    # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    # service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    # For GCP
+    # cloud.google.com/load-balancer-type: "External"
+    # For Azure
+    # service.beta.kubernetes.io/azure-load-balancer-resource-group: "myResourceGroup"
+spec:
+  type: LoadBalancer
+  # Specify external IPs if available (corresponds to publicnet range)
+  # externalIPs:
+  # - "64.112.117.122"  # Primary IP from docker-compose publicnet
+  ports:
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+    protocol: TCP
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+    protocol: TCP
+  selector:
+    app: boulder-monolith
+  # Preserve client source IPs for rate limiting and logging
+  externalTrafficPolicy: Local
+  # Session affinity for ACME nonce handling
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 300
+
+---
+# Challenge Validation LoadBalancer - HTTP-01 Challenges
+# Handles HTTP-01 challenge validation traffic (port 80/443)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-http-lb
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: loadbalancer
+    network-segment: public1
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: LoadBalancer
+  # Specify external IPs if available (corresponds to publicnet range)
+  # externalIPs:
+  # - "64.112.117.122"  # Same IP as WFE2 for HTTP-01 challenges
+  ports:
+  - name: http01
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https01
+    port: 443
+    targetPort: 443
+    protocol: TCP
+  - name: management
+    port: 8055
+    targetPort: 8055
+    protocol: TCP
+  selector:
+    app: chall-test-srv
+  externalTrafficPolicy: Local
+
+---
+# Challenge Validation LoadBalancer - TLS-ALPN-01 Challenges
+# Handles TLS-ALPN-01 challenge validation traffic (port 5001)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-tlsalpn-lb
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: loadbalancer
+    network-segment: public2
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: LoadBalancer
+  # Specify external IPs if available (corresponds to publicnet2 range)
+  # externalIPs:
+  # - "64.112.117.134"  # TLS-ALPN-01 IP from docker-compose publicnet2
+  ports:
+  - name: tlsalpn01
+    port: 5001
+    targetPort: 5001
+    protocol: TCP
+  # Additional challenge service ports
+  - name: https-redirect
+    port: 443
+    targetPort: 443
+    protocol: TCP
+  - name: http-redirect
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: chall-test-srv
+  externalTrafficPolicy: Local
+
+---
+# DNS Challenge LoadBalancer - DNS-01 Challenges
+# Handles DNS-01 challenge validation (DoH endpoints)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-dns-lb
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: loadbalancer
+    network-segment: public2
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: LoadBalancer
+  # externalIPs:
+  # - "64.112.117.134"  # Same as TLS-ALPN-01 for DNS challenges
+  ports:
+  - name: dns01-1
+    port: 8053
+    targetPort: 8053
+    protocol: UDP
+  - name: dns01-2
+    port: 8054
+    targetPort: 8054
+    protocol: UDP
+  - name: doh-http
+    port: 8343
+    targetPort: 8343
+    protocol: TCP
+  - name: doh-https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: chall-test-srv
+  externalTrafficPolicy: Local
+
+---
+# NodePort Services as Fallback for Local Development
+# These provide an alternative to LoadBalancer when external IPs aren't available
+
+# WFE2 NodePort - ACME v2 Protocol Endpoints (Development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-wfe2-nodeport
+  namespace: boulder-test
+  labels:
+    app: boulder-wfe2
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+    protocol: TCP
+    nodePort: 30001  # Accessible via <node-ip>:30001
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+    protocol: TCP
+    nodePort: 30003  # Accessible via <node-ip>:30003
+  selector:
+    app: boulder-monolith
+  sessionAffinity: ClientIP
+
+---
+# Challenge HTTP NodePort - HTTP-01 Challenges (Development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-http-nodeport
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: http01
+    port: 80
+    targetPort: 80
+    protocol: TCP
+    nodePort: 30080  # Accessible via <node-ip>:30080
+  - name: https01
+    port: 443
+    targetPort: 443
+    protocol: TCP
+    nodePort: 30443  # Accessible via <node-ip>:30443
+  - name: management
+    port: 8055
+    targetPort: 8055
+    protocol: TCP
+    nodePort: 30055  # Accessible via <node-ip>:30055
+  selector:
+    app: chall-test-srv
+
+---
+# Challenge TLS-ALPN NodePort - TLS-ALPN-01 Challenges (Development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-tlsalpn-nodeport
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: tlsalpn01
+    port: 5001
+    targetPort: 5001
+    protocol: TCP
+    nodePort: 30501  # Accessible via <node-ip>:30501
+  selector:
+    app: chall-test-srv
+
+---
+# Challenge DNS NodePort - DNS-01 Challenges (Development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-challenge-dns-nodeport
+  namespace: boulder-test
+  labels:
+    app: chall-test-srv
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: dns01-1
+    port: 8053
+    targetPort: 8053
+    protocol: UDP
+    nodePort: 30053  # Accessible via <node-ip>:30053
+  - name: dns01-2
+    port: 8054
+    targetPort: 8054
+    protocol: UDP
+    nodePort: 30054  # Accessible via <node-ip>:30054
+  - name: doh-http
+    port: 8343
+    targetPort: 8343
+    protocol: TCP
+    nodePort: 30343  # Accessible via <node-ip>:30343
+  - name: doh-https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+    nodePort: 30443  # Note: Shares with HTTPS, may need adjustment
+  selector:
+    app: chall-test-srv
+
+---
+# External Services - Web Interfaces for Development/Debugging
+# These provide access to monitoring and debugging interfaces
+
+# Jaeger UI NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-jaeger-nodeport
+  namespace: boulder-test
+  labels:
+    app: bjaeger
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: jaeger-ui
+    port: 16686
+    targetPort: 16686
+    protocol: TCP
+    nodePort: 31686  # Accessible via <node-ip>:31686
+  selector:
+    app: bjaeger
+
+---
+# Consul UI NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-consul-nodeport
+  namespace: boulder-test
+  labels:
+    app: bconsul
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: consul-ui
+    port: 8500
+    targetPort: 8500
+    protocol: TCP
+    nodePort: 30500  # Accessible via <node-ip>:30500
+  selector:
+    app: bconsul
+
+---
+# PKI Metal UI NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-pkimetal-nodeport
+  namespace: boulder-test
+  labels:
+    app: bpkimetal
+    service-type: nodeport
+    environment: development
+spec:
+  type: NodePort
+  ports:
+  - name: pkimetal-ui
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+    nodePort: 31080  # Accessible via <node-ip>:31080
+  selector:
+    app: bpkimetal

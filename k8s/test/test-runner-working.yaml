@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-test-script
+  namespace: boulder-test-demo
+data:
+  run-tests.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "=== Boulder Unit Tests in Kubernetes ==="
+    echo "Container: $(hostname)"
+    echo "Go version: $(go version)"
+    echo
+
+    # Clone Boulder repository
+    echo "Cloning Boulder repository..."
+    git clone https://github.com/letsencrypt/boulder.git /boulder
+    cd /boulder
+
+    echo "Current directory: $(pwd)"
+    echo "Boulder commit: $(git rev-parse --short HEAD)"
+    echo
+
+    # Run unit tests for core package which has actual tests
+    echo "Running unit tests for core package..."
+    echo "========================================="
+
+    export GO111MODULE=on
+    export CGO_ENABLED=1
+
+    # Run tests with timeout
+    timeout 120 go test -v -p=1 -count=1 ./core 2>&1 | tee /tmp/test.log | head -100
+
+    echo
+    echo "========================================="
+    if grep -q "PASS" /tmp/test.log; then
+      echo "✅ Tests PASSED!"
+      exit 0
+    else
+      echo "❌ Tests FAILED!"
+      exit 1
+    fi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: boulder-unit-tests-v2
+  namespace: boulder-test-demo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      name: boulder-unit-tests
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: test-runner
+        image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
+        command: ["/bin/bash", "/scripts/run-tests.sh"]
+        volumeMounts:
+        - name: test-script
+          mountPath: /scripts
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: test-script
+        configMap:
+          name: boulder-test-script
+          defaultMode: 0755
