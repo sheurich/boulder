@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Kubernetes-based test runner for Boulder - equivalent to t.sh but runs tests in K8s
-# This script orchestrates the entire test lifecycle using Kubernetes Jobs and Pods
+# This script runs tests inside a persistent Boulder monolith pod using kubectl exec
 #
 
 set -o errexit
@@ -15,13 +15,12 @@ fi
 #
 # Defaults and Global Variables
 #
-K8S_NAMESPACE="boulder-test-$(date +%s)"
+K8S_NAMESPACE="boulder"
 BOULDER_IMAGE="letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}"
 KUBECTL_CMD="kubectl"
 K8S_CONTEXT=""
-CLEANUP_ON_EXIT="true"
 VERBOSE="false"
-TEST_TIMEOUT="3600s"  # 1 hour timeout for tests
+KIND_CLUSTER_NAME="boulder-k8s"
 
 # Test configuration
 RACE="false"
@@ -69,22 +68,11 @@ function print_warning() {
 }
 
 #
-# Cleanup Functions
+# Utility Functions
 #
 function cleanup_k8s_resources() {
-  if [ "$CLEANUP_ON_EXIT" == "true" ]; then
-    print_heading "Cleaning up Kubernetes resources..."
-
-    # Delete jobs first to stop running pods
-    $KUBECTL_CMD delete jobs --all -n "$K8S_NAMESPACE" --ignore-not-found=true --timeout=60s || true
-
-    # Delete remaining resources
-    $KUBECTL_CMD delete namespace "$K8S_NAMESPACE" --ignore-not-found=true --timeout=120s || true
-
-    print_success "Cleanup completed"
-  else
-    print_warning "Skipping cleanup - namespace $K8S_NAMESPACE preserved"
-  fi
+  # No cleanup needed - we use persistent infrastructure
+  print_success "Using persistent infrastructure - no cleanup needed"
 }
 
 function print_outcome() {
@@ -117,448 +105,111 @@ function check_dependencies() {
     exit_msg "kubectl is not installed or not in PATH"
   fi
 
-  # Check envsubst for environment variable substitution
-  if ! command -v envsubst >/dev/null 2>&1; then
-    exit_msg "envsubst is not installed. Please install gettext package (e.g., 'apt-get install gettext-base' or 'brew install gettext')"
+  # Check kind
+  if ! command -v kind >/dev/null 2>&1; then
+    exit_msg "kind is not installed or not in PATH"
   fi
 
-  # Check if kubectl can connect to cluster
-  if ! $KUBECTL_CMD cluster-info >/dev/null 2>&1; then
-    exit_msg "Cannot connect to Kubernetes cluster. Is your cluster running and kubectl configured?"
-  fi
+  print_success "All dependencies found"
+}
 
-  # Check for kind or minikube
-  local k8s_platform=""
-  if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -q .; then
-    k8s_platform="kind"
-  elif command -v minikube >/dev/null 2>&1 && minikube status >/dev/null 2>&1; then
-    k8s_platform="minikube"
+#
+# Cluster Setup
+#
+function ensure_cluster_ready() {
+  print_heading "Ensuring Kubernetes cluster and Boulder deployment are ready..."
+
+  # Set kubectl context for kind cluster
+  K8S_CONTEXT="kind-${KIND_CLUSTER_NAME}"
+  KUBECTL_CMD="kubectl --context=$K8S_CONTEXT"
+
+  # Check if k8s-up.sh script exists and run it
+  if [ -f "k8s/scripts/k8s-up.sh" ]; then
+    print_heading "Running k8s-up.sh to ensure cluster is ready..."
+    ./k8s/scripts/k8s-up.sh --namespace "$K8S_NAMESPACE" --cluster-name "$KIND_CLUSTER_NAME"
   else
-    print_warning "Neither kind nor minikube detected. Assuming external cluster."
-    k8s_platform="external"
+    # Fallback: basic cluster check
+    if ! $KUBECTL_CMD cluster-info >/dev/null 2>&1; then
+      exit_msg "Cannot connect to Kubernetes cluster. Please ensure kind cluster is running."
+    fi
+
+    # Check if Boulder monolith deployment exists and is ready
+    if ! $KUBECTL_CMD get deployment boulder-monolith -n "$K8S_NAMESPACE" >/dev/null 2>&1; then
+      exit_msg "Boulder monolith deployment not found. Please run k8s/scripts/k8s-up.sh first."
+    fi
   fi
 
-  print_success "Using Kubernetes platform: $k8s_platform"
-
-  # Load Boulder image into cluster if using kind
-  if [ "$k8s_platform" == "kind" ]; then
-    print_heading "Loading Boulder image into kind cluster..."
-    if ! kind load docker-image "$BOULDER_IMAGE" 2>/dev/null; then
-      print_warning "Failed to load image into kind. Checking if image exists locally..."
-      if docker images "$BOULDER_IMAGE" | grep -q boulder-tools; then
-        print_heading "Retrying image load into kind..."
-        kind load docker-image "$BOULDER_IMAGE" --name boulder-k8s || {
-          print_error "Failed to load image. Please ensure Docker image $BOULDER_IMAGE exists"
-          exit 1
-        }
-      else
-        print_error "Docker image $BOULDER_IMAGE not found locally"
-        print_error "Please build the image first with: docker compose build boulder"
-        exit 1
-      fi
-    fi
-    print_success "Boulder image loaded into kind cluster"
-  elif [ "$k8s_platform" == "minikube" ]; then
-    print_heading "Loading Boulder image into minikube..."
-    if ! minikube image ls | grep -q "$(echo "$BOULDER_IMAGE" | cut -d: -f1)"; then
-      minikube image load "$BOULDER_IMAGE" || {
-        print_error "Failed to load image into minikube"
-        print_error "Please ensure Docker image $BOULDER_IMAGE exists"
-        exit 1
-      }
-    fi
-    print_success "Boulder image loaded into minikube"
-  fi
+  print_success "Cluster and Boulder deployment are ready"
 }
 
-#
-# Kubernetes Resource Management
-#
-function create_namespace() {
-  print_heading "Creating test namespace: $K8S_NAMESPACE"
+function wait_for_boulder_pod() {
+  print_heading "Waiting for Boulder monolith pod to be ready..."
 
-  cat <<EOF | $KUBECTL_CMD apply -f -
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: $K8S_NAMESPACE
-  labels:
-    app: boulder-test
-    created-by: tk8.sh
-EOF
+  # Wait for deployment to be available
+  $KUBECTL_CMD wait --for=condition=Available deployment/boulder-monolith -n "$K8S_NAMESPACE" --timeout=300s || {
+    exit_msg "Boulder monolith deployment not available"
+  }
 
-  print_success "Namespace created"
+  # Wait for pod to be ready
+  $KUBECTL_CMD wait --for=condition=Ready pods -l app=boulder-monolith -n "$K8S_NAMESPACE" --timeout=300s || {
+    exit_msg "Boulder monolith pod not ready"
+  }
+
+  print_success "Boulder monolith pod is ready"
 }
 
-function apply_k8s_manifests() {
-  print_heading "Applying Kubernetes manifests..."
-
-  # Apply manifests in order
-  local manifests=(
-    "k8s/test/configmaps.yaml"
-    "k8s/test/services.yaml"
-  )
-
-  for manifest in "${manifests[@]}"; do
-    if [ -f "$manifest" ]; then
-      print_heading "Applying $manifest..."
-      $KUBECTL_CMD apply -f "$manifest" -n "$K8S_NAMESPACE"
-    else
-      exit_msg "Required manifest not found: $manifest"
-    fi
-  done
-
-  print_success "Manifests applied"
+function get_boulder_pod_name() {
+  $KUBECTL_CMD get pods -l app=boulder-monolith -n "$K8S_NAMESPACE" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || {
+    exit_msg "Could not find Boulder monolith pod"
+  }
 }
 
-function run_database_initialization() {
-  print_heading "Initializing Boulder databases..."
-
-  # Export environment variables for envsubst
-  export BOULDER_TOOLS_TAG=${BOULDER_TOOLS_TAG:-latest}
-  export BOULDER_CONFIG_DIR=${BOULDER_CONFIG_DIR:-test/config}
-
-  # Apply database initialization job with environment substitution
-  envsubst < "k8s/test/database-init-job.yaml" | $KUBECTL_CMD apply -f - -n "$K8S_NAMESPACE"
-
-  # Wait for database initialization to complete
-  print_heading "Waiting for database initialization..."
-  if ! $KUBECTL_CMD wait --for=condition=Complete job/database-init -n "$K8S_NAMESPACE" --timeout=1800s; then
-    print_error "Database initialization failed or timed out"
-
-    # Get pod logs for debugging
-    local pod_name=$($KUBECTL_CMD get pods -n "$K8S_NAMESPACE" -l "job-name=database-init" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    if [ -n "$pod_name" ]; then
-      print_error "Database initialization pod logs:"
-      $KUBECTL_CMD logs "$pod_name" -n "$K8S_NAMESPACE" || true
-    fi
-
-    # Show job status for additional debugging
-    echo "Job status:"
-    $KUBECTL_CMD describe job/database-init -n "$K8S_NAMESPACE" || true
-
-    exit_msg "Database initialization failed"
-  fi
-
-  print_success "Database initialization completed"
-}
-
-function wait_for_services() {
-  print_heading "Waiting for services to be ready..."
-
-  # Complete list of all test service deployments
-  local services=("bmysql" "bredis-1" "bredis-2" "bconsul" "bjaeger" "bproxysql" "bpkimetal")
-
-  # Wait for all deployments to be available
-  for service in "${services[@]}"; do
-    echo "Waiting for deployment $service..."
-    $KUBECTL_CMD wait --for=condition=Available deployment/"$service" -n "$K8S_NAMESPACE" --timeout=300s || {
-      print_warning "Deployment $service not available yet, continuing..."
-    }
-  done
-
-  # Wait for all pods to be ready
-  for service in "${services[@]}"; do
-    echo "Waiting for $service pods to be ready..."
-    $KUBECTL_CMD wait --for=condition=Ready pods -l app="$service" -n "$K8S_NAMESPACE" --timeout=60s || {
-      print_warning "Pod $service not fully ready yet, continuing..."
-    }
-  done
-
-  print_success "All services are ready"
-}
-
-function create_source_volume() {
-  print_heading "Skipping shared source volume (not needed - source included in image)"
-  print_success "Source code available in Boulder image"
-}
-
-function run_certificate_generation() {
-  print_heading "Generating test certificates..."
-
-  # Apply certificate generation job - generate certificates in each test container
-  cat <<EOF | $KUBECTL_CMD apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: cert-generation
-  namespace: $K8S_NAMESPACE
-  labels:
-    app: boulder-cert-gen
-spec:
-  template:
-    metadata:
-      labels:
-        app: boulder-cert-gen
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: cert-gen
-        image: $BOULDER_IMAGE
-        imagePullPolicy: IfNotPresent
-        command: ["bash", "-c"]
-        args:
-        - |
-          echo "Starting certificate generation..."
-          cd /boulder
-
-          # Check if minica is available
-          if ! command -v minica >/dev/null 2>&1; then
-            echo "Installing minica..."
-            go install github.com/jsha/minica@latest
-          fi
-
-          # Run certificate generation
-          if [ -f "test/certs/generate.sh" ]; then
-            echo "Running certificate generation script..."
-            chmod +x test/certs/generate.sh
-            cd test/certs
-            ./generate.sh || {
-              echo "Certificate generation failed, creating minimal setup..."
-              mkdir -p /tmp/certs/ipki
-              cd /tmp/certs/ipki
-              minica -domains localhost --ip-addresses 127.0.0.1 || echo "Basic cert generation failed"
-            }
-          else
-            echo "Certificate generation script not found, creating basic certs..."
-            mkdir -p /tmp/certs/ipki
-            cd /tmp/certs/ipki
-            minica -domains localhost --ip-addresses 127.0.0.1 || echo "Basic cert generation failed"
-          fi
-
-          echo "Certificate generation completed"
-          ls -la /boulder/test/certs/ || true
-        workingDir: /boulder
-        env:
-        - name: BOULDER_CONFIG_DIR
-          value: "test/config"
-        - name: GOPATH
-          value: "/tmp/go"
-        - name: GOCACHE
-          value: "/tmp/go-cache"
-        - name: PATH
-          value: "/tmp/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        volumeMounts:
-        - name: softhsm-tokens
-          mountPath: /var/lib/softhsm/tokens
-        - name: go-cache
-          mountPath: /tmp/go-cache
-        - name: go-path
-          mountPath: /tmp/go
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "2"
-      volumes:
-      - name: softhsm-tokens
-        emptyDir:
-          sizeLimit: 100Mi
-      - name: go-cache
-        emptyDir:
-          sizeLimit: 500Mi
-      - name: go-path
-        emptyDir:
-          sizeLimit: 1Gi
-  backoffLimit: 3
-  activeDeadlineSeconds: 900
-EOF
-
-  # Wait for certificate generation to complete
-  print_heading "Waiting for certificate generation..."
-  if ! $KUBECTL_CMD wait --for=condition=Complete job/cert-generation -n "$K8S_NAMESPACE" --timeout=600s; then
-    print_error "Certificate generation failed or timed out"
-
-    # Get pod logs for debugging
-    local pod_name=$($KUBECTL_CMD get pods -n "$K8S_NAMESPACE" -l "job-name=cert-generation" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    if [ -n "$pod_name" ]; then
-      print_error "Certificate generation pod logs:"
-      $KUBECTL_CMD logs "$pod_name" -n "$K8S_NAMESPACE" || true
-    fi
-
-    print_warning "Certificate generation failed, but continuing with tests..."
-    return 0
-  fi
-
-  print_success "Certificates generated"
-}
-
-function run_tests_in_k8s() {
+function run_tests_in_boulder_pod() {
   local test_type=$1
   shift
   local test_args=("$@")
 
-  print_heading "Running $test_type tests in Kubernetes..."
+  print_heading "Running $test_type tests in Boulder pod..."
 
-  # Create test command based on type
-  local test_command=""
+  # Get the Boulder pod name
+  local pod_name
+  pod_name=$(get_boulder_pod_name)
+
+  print_heading "Using Boulder pod: $pod_name"
+
+  # Create test command based on type and arguments
+  local test_command=("./test.sh")
+
+  # Add test type flags
   case "$test_type" in
     "lints")
-      test_command="echo 'Running lints...'; golangci-lint run --timeout 9m ./... && python3 test/grafana/lint.py && typos && ./test/format-configs.py 'test/config*/*.json'"
+      test_command+=("--lints")
       ;;
     "unit")
-      test_command="echo 'Running unit tests...'; go run ./test/boulder-tools/flushredis/main.go || true; go test -p=1 ${test_args[*]} ./..."
+      test_command+=("--unit")
       ;;
     "integration")
-      test_command="echo 'Running integration tests...'; go run ./test/boulder-tools/flushredis/main.go || true; python3 test/integration-test.py --chisel --gotest ${test_args[*]}"
+      test_command+=("--integration")
       ;;
     "all")
-      test_command="./test.sh ${test_args[*]}"
+      # No specific flag needed - test.sh runs all by default
       ;;
     *)
       exit_msg "Unknown test type: $test_type"
       ;;
   esac
 
-  # Create test job
-  cat <<EOF | $KUBECTL_CMD apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: boulder-test-$test_type
-  namespace: $K8S_NAMESPACE
-spec:
-  template:
-    metadata:
-      labels:
-        app: boulder-test
-        test-type: $test_type
-    spec:
-      restartPolicy: Never
-      # Add init container to wait for database initialization
-      initContainers:
-      - name: wait-for-database-init
-        image: $BOULDER_IMAGE
-        imagePullPolicy: IfNotPresent
-        command: ['bash', '-c']
-        args:
-        - |
-          echo "Waiting for database initialization to complete..."
-          kubectl wait --for=condition=Complete job/database-init -n $K8S_NAMESPACE --timeout=1800s || {
-            echo "Database initialization not complete, but continuing with tests..."
-          }
-          echo "Database initialization verified"
-      containers:
-      - name: boulder-test
-        image: $BOULDER_IMAGE
-        imagePullPolicy: IfNotPresent
-        command: ["bash", "-c"]
-        args:
-        - |
-          echo "Starting Boulder test: $test_type"
-          cd /boulder
+  # Add test arguments
+  test_command+=("${test_args[@]}")
 
-          # Generate certificates for this test run
-          echo "Generating test certificates..."
-          if ! command -v minica >/dev/null 2>&1; then
-            echo "Installing minica..."
-            export GOPATH=/tmp/go
-            export PATH="/tmp/go/bin:$PATH"
-            go install github.com/jsha/minica@latest
-          fi
+  print_heading "Running command: ${test_command[*]}"
 
-          # Run certificate generation if script exists
-          if [ -f "test/certs/generate.sh" ]; then
-            echo "Running certificate generation script..."
-            chmod +x test/certs/generate.sh
-            cd test/certs
-            ./generate.sh || echo "Certificate generation failed, but continuing..."
-            cd /boulder
-          else
-            echo "Certificate generation script not found, continuing without custom certs..."
-          fi
-
-          # Run the test command
-          $test_command
-
-          echo "Test completed successfully: $test_type"
-        workingDir: /boulder
-        env:
-        - name: BOULDER_CONFIG_DIR
-          value: "$BOULDER_CONFIG_DIR"
-        - name: FAKE_DNS
-          value: "bconsul"
-        - name: GOCACHE
-          value: "/tmp/.gocache/go-build"
-        - name: GOMODCACHE
-          value: "/tmp/.gocache/go-mod"
-        # Service hosts
-        - name: MYSQL_HOST
-          value: "bmysql"
-        - name: PROXYSQL_HOST
-          value: "bproxysql"
-        - name: REDIS_HOST_1
-          value: "bredis-1"
-        - name: REDIS_HOST_2
-          value: "bredis-2"
-        - name: CONSUL_HOST
-          value: "bconsul"
-        - name: JAEGER_HOST
-          value: "bjaeger"
-        - name: PKIMETAL_HOST
-          value: "bpkimetal"
-        volumeMounts:
-        # Go build cache
-        - name: gocache
-          mountPath: /tmp/.gocache
-        # Test configuration
-        - name: test-config
-          mountPath: /boulder/test/config-k8s
-          readOnly: true
-        # SoftHSM tokens
-        - name: softhsm-tokens
-          mountPath: /var/lib/softhsm/tokens
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1"
-          limits:
-            memory: "8Gi"
-            cpu: "4"
-      volumes:
-      # Go build cache
-      - name: gocache
-        emptyDir:
-          sizeLimit: 2Gi
-      # Test configurations
-      - name: test-config
-        configMap:
-          name: boulder-test-config
-      # SoftHSM tokens
-      - name: softhsm-tokens
-        emptyDir:
-          sizeLimit: 100Mi
-  backoffLimit: 1
-  activeDeadlineSeconds: 3600
-EOF
-
-  # Stream logs from the test pod
-  local pod_name=""
-  echo "Waiting for test pod to start..."
-  while [ -z "$pod_name" ]; do
-    pod_name=$($KUBECTL_CMD get pods -n "$K8S_NAMESPACE" -l "job-name=boulder-test-$test_type" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    sleep 2
-  done
-
-  echo "Streaming logs from $pod_name..."
-  $KUBECTL_CMD logs -n "$K8S_NAMESPACE" -f "$pod_name" || true
-
-  # Wait for job completion
-  if $KUBECTL_CMD wait --for=condition=Complete job/boulder-test-$test_type -n "$K8S_NAMESPACE" --timeout="$TEST_TIMEOUT"; then
+  # Execute test.sh inside the Boulder pod
+  if $KUBECTL_CMD exec "$pod_name" -n "$K8S_NAMESPACE" -- "${test_command[@]}"; then
     print_success "$test_type tests completed successfully"
     return 0
   else
     print_error "$test_type tests failed"
-
-    # Get more details about the failure
-    echo "Job status:"
-    $KUBECTL_CMD describe job/boulder-test-$test_type -n "$K8S_NAMESPACE"
-
-    echo "Pod logs:"
-    $KUBECTL_CMD logs job/boulder-test-$test_type -n "$K8S_NAMESPACE" --tail=50
-
     return 1
   fi
 }
@@ -573,7 +224,7 @@ Boulder Kubernetes Test Suite CLI
 Usage:
   $(basename "${0}") [OPTION]...
 
-Runs Boulder test suite in a Kubernetes environment using Jobs and Pods.
+Runs Boulder test suite inside a persistent Boulder monolith pod using kubectl exec.
 With no options passed, runs standard battery of tests (lint, unit, and integration).
 
 Options:
@@ -590,9 +241,8 @@ Options:
                                           Default: test/coverage/<timestamp>
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
     -k <CONTEXT>, --kube-context=<CONTEXT> Use specific kubectl context
-    -N <NAMESPACE>, --namespace=<NAMESPACE> Use specific Kubernetes namespace
-    --no-cleanup                          Don't cleanup K8s resources after tests
-    --timeout=<DURATION>                  Test timeout (default: 3600s)
+    -N <NAMESPACE>, --namespace=<NAMESPACE> Use specific Kubernetes namespace (default: boulder)
+    --cluster-name=<NAME>                 Kind cluster name (default: boulder-k8s)
     -h, --help                            Show this help message
 
 Examples:
@@ -603,9 +253,9 @@ Examples:
     $(basename "${0}") -p ./va --unit     # Run unit tests for VA package only
 
 Requirements:
-    - kubectl configured and connected to a cluster
-    - kind or minikube recommended for local development
-    - Docker image: $BOULDER_IMAGE
+    - kubectl configured and connected to a kind cluster
+    - kind cluster with Boulder monolith deployment running
+    - Run k8s/scripts/k8s-up.sh first to set up the cluster
 
 EOM
 )"
@@ -638,8 +288,7 @@ while getopts luvwecinhd:p:f:k:N:-: OPT; do
     d | coverage-dir )               check_arg; COVERAGE_DIR="${OPTARG}" ;;
     k | kube-context )               check_arg; K8S_CONTEXT="${OPTARG}" ;;
     N | namespace )                  check_arg; K8S_NAMESPACE="${OPTARG}" ;;
-    no-cleanup )                     CLEANUP_ON_EXIT="false" ;;
-    timeout )                        check_arg; TEST_TIMEOUT="${OPTARG}" ;;
+    cluster-name )                   check_arg; KIND_CLUSTER_NAME="${OPTARG}" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;
     ? )                              exit 2 ;;
@@ -663,7 +312,6 @@ if [[ "${RUN[@]}" =~ unit ]] && [[ "${RUN[@]}" =~ integration ]] && [[ -n "${FIL
 fi
 
 # Setup signal handlers
-trap cleanup_k8s_resources EXIT
 trap "print_outcome" EXIT
 
 #
@@ -677,8 +325,7 @@ echo "    NAMESPACE:          $K8S_NAMESPACE"
 echo "    BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR"
 echo "    BOULDER_IMAGE:      $BOULDER_IMAGE"
 echo "    KUBECTL_CONTEXT:    ${K8S_CONTEXT:-default}"
-echo "    CLEANUP_ON_EXIT:    $CLEANUP_ON_EXIT"
-echo "    TEST_TIMEOUT:       $TEST_TIMEOUT"
+echo "    KIND_CLUSTER_NAME:  $KIND_CLUSTER_NAME"
 if [ -n "${UNIT_PACKAGES[@]+x}" ]; then
   echo "    UNIT_PACKAGES:      ${UNIT_PACKAGES[*]}"
 fi
@@ -686,16 +333,10 @@ if [ -n "${FILTER[@]+x}" ]; then
   echo "    FILTER:             ${FILTER[*]}"
 fi
 
-# Check dependencies
+# Check dependencies and ensure cluster is ready
 check_dependencies
-
-# Create Kubernetes resources
-create_namespace
-apply_k8s_manifests
-create_source_volume
-wait_for_services
-run_database_initialization
-run_certificate_generation
+ensure_cluster_ready
+wait_for_boulder_pod
 
 # Run tests based on configuration
 test_failed=false
@@ -726,7 +367,7 @@ for test_type in "${RUN[@]}"; do
   fi
 
   # Run the test
-  if ! run_tests_in_k8s "$test_type" "${test_args[@]}"; then
+  if ! run_tests_in_boulder_pod "$test_type" "${test_args[@]}"; then
     test_failed=true
     break
   fi
