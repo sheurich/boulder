@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consul-config
+  namespace: boulder
+  labels:
+    app: consul
+    app.kubernetes.io/name: consul
+    app.kubernetes.io/component: service-discovery
+    app.kubernetes.io/part-of: boulder
+data:
+  config.hcl: |
+    client_addr = "0.0.0.0"
+    bind_addr   = "0.0.0.0"
+    log_level   = "ERROR"
+    datacenter  = "boulder-dc"
+
+    enable_agent_tls_for_checks = true
+
+    tls {
+      defaults {
+        ca_file         = "/tls/ca/ca.crt"
+        cert_file       = "/tls/consul/tls.crt"
+        key_file        = "/tls/consul/tls.key"
+        verify_incoming = false
+      }
+    }
+
+    ui_config {
+      enabled = true
+    }
+
+    ports {
+      dns      = 53
+      http     = 8500
+      grpc_tls = 8503
+    }
+
+    # Boulder services will be registered dynamically
+    # Initial placeholder service for testing
+    services {
+      id      = "consul-health"
+      name    = "consul"
+      address = "boulder-consul"
+      port    = 8500
+      tags    = ["http"]
+    }

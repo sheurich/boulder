@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-redis-1
+  namespace: boulder
+  labels:
+    app: boulder-redis-1
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis-1
+    app.kubernetes.io/component: rate-limiting
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: boulder-redis-1
+  ports:
+  - port: 4218
+    targetPort: 4218
+    protocol: TCP
+    name: tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-redis-2
+  namespace: boulder
+  labels:
+    app: boulder-redis-2
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis-2
+    app.kubernetes.io/component: rate-limiting
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: boulder-redis-2
+  ports:
+  - port: 4218
+    targetPort: 4218
+    protocol: TCP
+    name: tls

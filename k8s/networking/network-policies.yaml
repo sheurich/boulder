@@ -1,0 +1,158 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-internal-network
+  namespace: boulder
+  labels:
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: boulder
+spec:
+  podSelector:
+    matchLabels:
+      network: internal
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: boulder
+    - podSelector:
+        matchLabels:
+          network: internal
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: boulder
+    - podSelector:
+        matchLabels:
+          network: internal
+  - to:
+    - namespaceSelector: {}
+      podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-database-access
+  namespace: boulder
+  labels:
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: boulder
+spec:
+  podSelector:
+    matchLabels:
+      app: boulder-mysql
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: boulder-proxysql
+    ports:
+    - protocol: TCP
+      port: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-proxysql-access
+  namespace: boulder
+  labels:
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: boulder
+spec:
+  podSelector:
+    matchLabels:
+      app: boulder-proxysql
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          network: internal
+    ports:
+    - protocol: TCP
+      port: 6033
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6032
+    - protocol: TCP
+      port: 6080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-redis-access
+  namespace: boulder
+  labels:
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: boulder
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: ["boulder-redis-1", "boulder-redis-2"]
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          network: internal
+    ports:
+    - protocol: TCP
+      port: 4218
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-consul-access
+  namespace: boulder
+  labels:
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: boulder
+spec:
+  podSelector:
+    matchLabels:
+      app: boulder-consul
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          network: internal
+    ports:
+    - protocol: TCP
+      port: 8500
+    - protocol: TCP
+      port: 8503
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53

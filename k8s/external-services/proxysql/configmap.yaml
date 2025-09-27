@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxysql-config
+  namespace: boulder
+  labels:
+    app: proxysql
+    app.kubernetes.io/name: proxysql
+    app.kubernetes.io/component: database-proxy
+    app.kubernetes.io/part-of: boulder
+data:
+  proxysql.cnf: |
+    datadir = "/var/lib/proxysql";
+    errorlog = "/var/log/proxysql/proxysql.log";
+    admin_variables =
+    {
+      mysql_ifaces = "0.0.0.0:6032";
+      admin_credentials = "admin:admin;radmin:radmin";
+      web_enabled = "true";
+      web_port = 6080;
+      stats_credentials = "stats:stats";
+      debug = True;
+    };
+    mysql_variables =
+    {
+      threads = 4;
+      max_connections = 10240;
+      have_compress = True;
+      poll_timeout = 2000;
+      interfaces = "0.0.0.0:6033";
+      stacksize = 1048576;
+      max_allowed_packet = 16777216;
+      connect_timeout_server = 20000;
+      connect_timeout_server_max = 20000;
+      monitor_username = "proxysql";
+      monitor_password = "";
+      monitor_history = 600000;
+      monitor_connect_interval = 60000;
+      monitor_ping_interval = 10000;
+      monitor_read_only_interval = 1000;
+      monitor_read_only_timeout = 500;
+      monitor_writer_is_also_reader = False;
+      commands_stats = True;
+      sessions_sort = True;
+      connect_retries_on_failure = 10;
+      free_connections_pct = 90;
+      connection_warming = True;
+      eventslog_filesize = 104857600;
+      eventslog_default_log = 1;
+      auditlog_filesize = 104857600;
+    };
+    mysql_servers =
+    (
+      {
+        address = "boulder-mysql";
+        port = 3306;
+        hostgroup = 0;
+        max_connections = 100;
+        max_latency_ms = 200;
+      }
+    );
+    mysql_users =
+    (
+      { username = "root"; },
+      { username = "policy"; },
+      { username = "sa"; },
+      { username = "sa_ro"; },
+      { username = "ocsp_resp"; },
+      { username = "revoker"; },
+      { username = "importer"; },
+      { username = "mailer"; },
+      { username = "cert_checker"; },
+      { username = "test_setup"; },
+      { username = "badkeyrevoker"; },
+      { username = "incidents_sa"; }
+    );
+    mysql_query_rules =
+    (
+      {
+        rule_id = 1;
+        active = 1;
+        match_digest = ".";
+        log = 0;
+        apply = 0;
+      },
+      {
+        rule_id = 10;
+        username = "sa";
+        timeout = 4900;
+      },
+      {
+        rule_id = 11;
+        username = "sa_ro";
+        timeout = 4900;
+      },
+      {
+        rule_id = 16;
+        username = "badkeyrevoker";
+        timeout = 3600000;
+      },
+      {
+        rule_id = 17;
+        username = "mailer";
+        timeout = 1800000;
+      },
+      {
+        rule_id = 18;
+        username = "ocsp_resp";
+        timeout = 4900;
+      }
+    );
+    scheduler =
+    (
+    );

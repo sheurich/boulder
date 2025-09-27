@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: boulder-redis-1
+  namespace: boulder
+  labels:
+    app: boulder-redis-1
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis-1
+    app.kubernetes.io/component: rate-limiting
+    app.kubernetes.io/part-of: boulder
+spec:
+  serviceName: boulder-redis-1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boulder-redis-1
+  template:
+    metadata:
+      labels:
+        app: boulder-redis-1
+        network: internal
+    spec:
+      containers:
+      - name: redis
+        image: redis:6.2.7
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - containerPort: 4218
+          name: tls
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: redis-tls
+          mountPath: /tls/redis
+        - name: ca-cert
+          mountPath: /tls/ca
+        - name: redis-data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              redis-cli \
+                --tls \
+                --cert /tls/redis/tls.crt \
+                --key /tls/redis/tls.key \
+                --cacert /tls/ca/ca.crt \
+                -p 4218 \
+                -a 435e9c4225f08813ef3af7c725f0d30d263b9cd3 \
+                --no-auth-warning \
+                ping
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              redis-cli \
+                --tls \
+                --cert /tls/redis/tls.crt \
+                --key /tls/redis/tls.key \
+                --cacert /tls/ca/ca.crt \
+                -p 4218 \
+                -a 435e9c4225f08813ef3af7c725f0d30d263b9cd3 \
+                --no-auth-warning \
+                ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+      - name: redis-tls
+        secret:
+          secretName: redis-tls-certs
+          defaultMode: 0400
+      - name: ca-cert
+        secret:
+          secretName: boulder-ca-cert
+          defaultMode: 0444
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi

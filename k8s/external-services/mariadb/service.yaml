@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-mysql
+  namespace: boulder
+  labels:
+    app: boulder-mysql
+    app.kubernetes.io/name: mariadb
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  selector:
+    app: boulder-mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
+  sessionAffinity: None

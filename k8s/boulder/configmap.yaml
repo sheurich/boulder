@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-config
+  namespace: boulder
+  labels:
+    app: boulder
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: boulder
+data:
+  # Placeholder for Boulder configuration files
+  # In Phase 1, we mount the actual config files from the container image
+  # This ConfigMap can be populated with actual configuration in future phases
+  placeholder.txt: |
+    This ConfigMap will contain Boulder configuration files.
+    For Phase 1, configuration is loaded from the container image.
+    Future phases will migrate configuration here.

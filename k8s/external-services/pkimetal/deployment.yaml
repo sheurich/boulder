@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boulder-pkimetal
+  namespace: boulder
+  labels:
+    app: boulder-pkimetal
+    app.kubernetes.io/name: pkimetal
+    app.kubernetes.io/component: ct-log
+    app.kubernetes.io/part-of: boulder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boulder-pkimetal
+  template:
+    metadata:
+      labels:
+        app: boulder-pkimetal
+        network: internal
+    spec:
+      containers:
+      - name: pkimetal
+        image: ghcr.io/pkimetal/pkimetal:v1.20.0
+        ports:
+        - containerPort: 80
+          name: http
+        - containerPort: 443
+          name: https
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3

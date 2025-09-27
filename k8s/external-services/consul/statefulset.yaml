@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: boulder-consul
+  namespace: boulder
+  labels:
+    app: boulder-consul
+    app.kubernetes.io/name: consul
+    app.kubernetes.io/component: service-discovery
+    app.kubernetes.io/part-of: boulder
+spec:
+  serviceName: boulder-consul
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boulder-consul
+  template:
+    metadata:
+      labels:
+        app: boulder-consul
+        network: internal
+    spec:
+      containers:
+      - name: consul
+        image: hashicorp/consul:1.15.4
+        command:
+        - consul
+        - agent
+        - -dev
+        - -config-format=hcl
+        - -config-file=/etc/consul/config.hcl
+        env:
+        - name: CONSUL_BIND_INTERFACE
+          value: eth0
+        ports:
+        - containerPort: 8500
+          name: http
+        - containerPort: 8503
+          name: grpc-tls
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        - containerPort: 53
+          name: dns-udp
+          protocol: UDP
+        volumeMounts:
+        - name: consul-config
+          mountPath: /etc/consul
+        - name: consul-tls
+          mountPath: /tls/consul
+        - name: ca-cert
+          mountPath: /tls/ca
+        - name: consul-data
+          mountPath: /consul/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /v1/status/leader
+            port: 8500
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /v1/agent/self
+            port: 8500
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+      volumes:
+      - name: consul-config
+        configMap:
+          name: consul-config
+      - name: consul-tls
+        secret:
+          secretName: consul-tls-certs
+          defaultMode: 0400
+      - name: ca-cert
+        secret:
+          secretName: boulder-ca-cert
+          defaultMode: 0444
+  volumeClaimTemplates:
+  - metadata:
+      name: consul-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi

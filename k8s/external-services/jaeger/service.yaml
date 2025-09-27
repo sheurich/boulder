@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-jaeger
+  namespace: boulder
+  labels:
+    app: boulder-jaeger
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/component: tracing
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  selector:
+    app: boulder-jaeger
+  ports:
+  - port: 5775
+    targetPort: 5775
+    protocol: UDP
+    name: zipkin-compact
+  - port: 6831
+    targetPort: 6831
+    protocol: UDP
+    name: jaeger-compact
+  - port: 6832
+    targetPort: 6832
+    protocol: UDP
+    name: jaeger-binary
+  - port: 5778
+    targetPort: 5778
+    protocol: TCP
+    name: serve-configs
+  - port: 16686
+    targetPort: 16686
+    protocol: TCP
+    name: ui
+  - port: 14268
+    targetPort: 14268
+    protocol: TCP
+    name: collector
+  - port: 14250
+    targetPort: 14250
+    protocol: TCP
+    name: grpc
+  - port: 9411
+    targetPort: 9411
+    protocol: TCP
+    name: zipkin

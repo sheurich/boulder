@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-wfe
+  namespace: boulder
+  labels:
+    app: boulder
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: web-frontend
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  selector:
+    app: boulder
+  ports:
+  - port: 4001
+    targetPort: 4001
+    protocol: TCP
+    name: wfe2
+  - port: 4003
+    targetPort: 4003
+    protocol: TCP
+    name: sfe
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-debug
+  namespace: boulder
+  labels:
+    app: boulder
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: debug
+    app.kubernetes.io/part-of: boulder
+spec:
+  type: ClusterIP
+  selector:
+    app: boulder
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: ca-debug
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
+    name: ra-debug
+  - port: 8003
+    targetPort: 8003
+    protocol: TCP
+    name: sa-debug
+  - port: 8004
+    targetPort: 8004
+    protocol: TCP
+    name: va-debug

@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: boulder
+
+resources:
+  # Namespace and RBAC
+  - namespaces/boulder-namespace.yaml
+
+  # External Services - Infrastructure
+  - external-services/mariadb/statefulset.yaml
+  - external-services/mariadb/service.yaml
+
+  - external-services/proxysql/configmap.yaml
+  - external-services/proxysql/deployment.yaml
+  - external-services/proxysql/service.yaml
+
+  - external-services/redis/configmap.yaml
+  - external-services/redis/redis-1-statefulset.yaml
+  - external-services/redis/redis-2-statefulset.yaml
+  - external-services/redis/services.yaml
+
+  - external-services/consul/configmap.yaml
+  - external-services/consul/statefulset.yaml
+  - external-services/consul/service.yaml
+
+  - external-services/jaeger/deployment.yaml
+  - external-services/jaeger/service.yaml
+
+  - external-services/pkimetal/deployment.yaml
+  - external-services/pkimetal/service.yaml
+
+  # Boulder Application
+  - boulder/configmap.yaml
+  - boulder/deployment.yaml
+  - boulder/service.yaml
+
+  # Secrets
+  - secrets/tls-secrets.yaml
+
+  # Network Policies
+  - networking/network-policies.yaml
+
+commonLabels:
+  environment: development
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/version: phase1
+
+images:
+  - name: letsencrypt/boulder-tools
+    newTag: latest
+  - name: mariadb
+    newTag: 10.11.13
+  - name: proxysql/proxysql
+    newTag: 2.5.4
+  - name: redis
+    newTag: 6.2.7
+  - name: hashicorp/consul
+    newTag: 1.15.4
+  - name: jaegertracing/all-in-one
+    newTag: "1.50"
+  - name: ghcr.io/pkimetal/pkimetal
+    newTag: v1.20.0
