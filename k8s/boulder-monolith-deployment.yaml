@@ -1,0 +1,434 @@
+---
+# Boulder Monolith Deployment for Phase 1
+# This deployment runs all Boulder services continuously using startservers.py
+# and matches the Docker Compose boulder container behavior
+#
+# Usage:
+#   kubectl apply -f k8s/boulder-monolith-deployment.yaml
+#
+# To run tests inside the running Boulder container:
+#   kubectl exec -it deployment/boulder-monolith -- /bin/bash
+#   cd /boulder && python3 test/integration.py
+#
+# To access Boulder services:
+#   - ACME v2 API: http://localhost:30001/directory (via NodePort)
+#   - SFE API: http://localhost:30003 (via NodePort)
+#   - Debug endpoints available on various ports (see port definitions below)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boulder-monolith
+  namespace: boulder
+  labels:
+    app: boulder-monolith
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: acme-ca-monolith
+    app.kubernetes.io/part-of: boulder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boulder-monolith
+  template:
+    metadata:
+      labels:
+        app: boulder-monolith
+        network: internal
+    spec:
+      serviceAccountName: boulder-service-account
+      hostAliases:
+      # Mimic the extra_hosts configuration from docker-compose
+      - ip: "127.0.0.1"
+        hostnames:
+        - "ca.example.org"
+        - "integration.trust"
+      initContainers:
+      # Copy Boulder source code from the image to the shared volume
+      - name: copy-source
+        image: letsencrypt/boulder-tools:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Copying Boulder source code..."
+          # The boulder-tools images contains the Boulder source in /go/src/github.com/letsencrypt/boulder
+          # Copy it to the shared volume
+          cp -r /go/src/github.com/letsencrypt/boulder/* /boulder/
+          echo "Source code copied successfully"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      # Generate test certificates (equivalent to bsetup)
+      - name: bsetup
+        image: letsencrypt/boulder-tools:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Generating test certificates..."
+          cd /boulder
+          ./test/certs/generate.sh
+          echo "Certificates generated successfully"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-certs
+          mountPath: /boulder/test/certs
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
+        workingDir: /boulder
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      # Wait for all external dependencies to be ready
+      - name: wait-for-dependencies
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for external dependencies..."
+
+          echo "Checking MariaDB..."
+          until nc -z boulder-mysql 3306; do
+            echo "MariaDB not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "MariaDB is ready!"
+
+          echo "Checking ProxySQL..."
+          until nc -z boulder-proxysql 6033; do
+            echo "ProxySQL not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "ProxySQL is ready!"
+
+          echo "Checking Redis instances..."
+          until nc -z bredis-1 6379; do
+            echo "bredis-1 not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "bredis-1 is ready!"
+
+          until nc -z bredis-2 6379; do
+            echo "bredis-2 not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "bredis-2 is ready!"
+
+          echo "Checking Consul..."
+          until nc -z boulder-consul 8500; do
+            echo "Consul not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "Consul is ready!"
+
+          echo "Checking Jaeger..."
+          until nc -z boulder-jaeger 16686; do
+            echo "Jaeger not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "Jaeger is ready!"
+
+          echo "Checking PKIMetal..."
+          until nc -z boulder-pkimetal 80; do
+            echo "PKIMetal not ready. Retrying in 2 seconds..."
+            sleep 2
+          done
+          echo "PKIMetal is ready!"
+
+          echo "All dependencies are ready!"
+      containers:
+      - name: boulder
+        image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Always
+        # Run startservers.py continuously to start all Boulder services
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Starting Boulder services using startservers.py..."
+          cd /boulder
+
+          # Build Boulder binaries first
+          echo "Building Boulder binaries..."
+          make GO_BUILD_FLAGS=
+
+          # Start all services using startservers.py
+          echo "Starting all Boulder services..."
+          exec python3 ./test/startservers.py
+        env:
+        # Environment variables matching docker-compose.yml
+        - name: FAKE_DNS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: BOULDER_CONFIG_DIR
+          value: "test/config"
+        - name: GOCACHE
+          value: "/boulder/.gocache/go-build"
+        - name: GOMODCACHE
+          value: "/tmp/go-mod"
+        - name: GORACE
+          value: "halt_on_error=1"
+        ports:
+        # Public API ports (matching docker-compose)
+        - containerPort: 4001
+          name: acmev2
+          protocol: TCP
+        - containerPort: 4003
+          name: sfe
+          protocol: TCP
+        # All debug ports for monitoring and debugging
+        - containerPort: 8001
+          name: ca-debug-1
+        - containerPort: 8002
+          name: ra-debug-1
+        - containerPort: 8003
+          name: sa-debug-1
+        - containerPort: 8004
+          name: va-debug-1
+        - containerPort: 8009
+          name: pub-debug-1
+        - containerPort: 8011
+          name: rva-debug-a
+        - containerPort: 8012
+          name: rva-debug-b
+        - containerPort: 8013
+          name: wfe2-debug
+        - containerPort: 8015
+          name: sfe-debug
+        - containerPort: 8016
+          name: log-val-debug
+        - containerPort: 8020
+          name: bad-key-debug
+        - containerPort: 8023
+          name: rva-debug-c
+        - containerPort: 8101
+          name: ca-debug-2
+        - containerPort: 8102
+          name: ra-debug-2
+        - containerPort: 8103
+          name: sa-debug-2
+        - containerPort: 8104
+          name: va-debug-2
+        - containerPort: 8109
+          name: pub-debug-2
+        - containerPort: 8111
+          name: nonce-debug-1
+        - containerPort: 8112
+          name: nonce-debug-2
+        - containerPort: 8113
+          name: nonce-debug-3
+        - containerPort: 8114
+          name: email-debug
+        - containerPort: 8118
+          name: ra-sct-debug-1
+        - containerPort: 8119
+          name: ra-sct-debug-2
+        # gRPC service ports
+        - containerPort: 9391
+          name: publisher-1
+        - containerPort: 9392
+          name: va-1
+        - containerPort: 9393
+          name: ca-1
+        - containerPort: 9394
+          name: ra-1
+        - containerPort: 9395
+          name: sa-1
+        - containerPort: 9397
+          name: remoteva-a
+        - containerPort: 9491
+          name: publisher-2
+        - containerPort: 9492
+          name: va-2
+        - containerPort: 9493
+          name: ca-2
+        - containerPort: 9494
+          name: ra-2
+        - containerPort: 9495
+          name: sa-2
+        - containerPort: 9498
+          name: remoteva-b
+        - containerPort: 9499
+          name: remoteva-c
+        - containerPort: 9594
+          name: ra-sct-1
+        - containerPort: 9694
+          name: ra-sct-2
+        # Nonce service ports
+        - containerPort: 9301
+          name: nonce-taro-1
+        - containerPort: 9401
+          name: nonce-zinc-1
+        - containerPort: 9501
+          name: nonce-taro-2
+        # Other service ports
+        - containerPort: 9309
+          name: crl-storer
+        - containerPort: 9603
+          name: email-export
+        - containerPort: 9667
+          name: crl-debug
+        # Test service ports
+        - containerPort: 4502
+          name: aia-test-srv
+        - containerPort: 4600
+          name: ct-test-srv
+        - containerPort: 4501
+          name: s3-test-srv
+        - containerPort: 9601
+          name: pardot-test-1
+        - containerPort: 9602
+          name: pardot-test-2
+        - containerPort: 9701
+          name: zendesk-test
+        # Challenge test server ports
+        - containerPort: 8053
+          name: dns01-1
+        - containerPort: 8054
+          name: dns01-2
+        - containerPort: 8055
+          name: chall-mgmt
+        - containerPort: 8343
+          name: doh-1
+        - containerPort: 8443
+          name: doh-2
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+        - name: boulder-certs
+          mountPath: /boulder/test/certs
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
+        - name: gocache
+          mountPath: /boulder/.gocache
+        workingDir: /boulder
+        # Health checks targeting WFE2 ACME directory endpoint
+        readinessProbe:
+          httpGet:
+            path: /directory
+            port: 4001
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /directory
+            port: 4001
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "6Gi"
+            cpu: "3000m"
+      volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: boulder-certs
+        emptyDir: {}
+      - name: softhsm-tokens
+        emptyDir: {}
+      - name: gocache
+        emptyDir: {}
+      # DNS configuration to use consul for service discovery
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+        - "10.96.0.10"  # kube-dns first
+        # Note: consul IP will be resolved by kube-dns since we can't use hostname in nameservers
+        searches:
+        - "boulder.svc.cluster.local"
+        - "svc.cluster.local"
+        - "cluster.local"
+        - "service.consul"  # Important for consul service discovery
+        options:
+        - name: ndots
+          value: "5"
+      # Restart policy for continuous operation
+      restartPolicy: Always
+---
+# Main service for Boulder monolith - exposes public API ports
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-monolith
+  namespace: boulder
+  labels:
+    app: boulder-monolith
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: acme-ca-monolith
+    app.kubernetes.io/part-of: boulder
+spec:
+  selector:
+    app: boulder-monolith
+  type: ClusterIP
+  ports:
+  # Public API ports
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+    protocol: TCP
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+    protocol: TCP
+  # Debug ports for monitoring
+  - name: wfe2-debug
+    port: 8013
+    targetPort: 8013
+    protocol: TCP
+  - name: sfe-debug
+    port: 8015
+    targetPort: 8015
+    protocol: TCP
+---
+# External service for public access (NodePort for development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: boulder-monolith-external
+  namespace: boulder
+  labels:
+    app: boulder-monolith
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: acme-ca-monolith
+    app.kubernetes.io/part-of: boulder
+spec:
+  selector:
+    app: boulder-monolith
+  type: NodePort
+  ports:
+  - name: acmev2
+    port: 4001
+    targetPort: 4001
+    nodePort: 30001
+    protocol: TCP
+  - name: sfe
+    port: 4003
+    targetPort: 4003
+    nodePort: 30003
+    protocol: TCP
