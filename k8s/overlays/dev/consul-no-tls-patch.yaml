@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: boulder-consul
+  namespace: boulder
+spec:
+  template:
+    spec:
+      containers:
+      - name: consul
+        ports:
+        - containerPort: 8500
+          name: http
+        - containerPort: 8502
+          name: grpc
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        - containerPort: 53
+          name: dns-udp
+          protocol: UDP
+        volumeMounts:
+        - name: consul-config
+          mountPath: /etc/consul
+        - name: consul-data
+          mountPath: /consul/data
+      volumes:
+      - name: consul-config
+        configMap:
+          name: consul-config

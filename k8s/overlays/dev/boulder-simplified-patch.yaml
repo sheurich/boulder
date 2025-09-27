@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boulder
+  namespace: boulder
+spec:
+  template:
+    spec:
+      containers:
+      - name: boulder
+        imagePullPolicy: Never  # Use local image for dev
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Boulder Development Container Starting..."
+          echo "Available services:"
+          echo "- MySQL: boulder-mysql:3306"
+          echo "- ProxySQL: boulder-proxysql:6033"
+          echo "- Redis-1: boulder-redis-1:6379"
+          echo "- Redis-2: boulder-redis-2:6379"
+          echo "- Consul: boulder-consul:8500"
+          echo "- Jaeger: boulder-jaeger:16686"
+
+          # For development, start a simple HTTP server
+          cd /go/src/github.com/letsencrypt/boulder 2>/dev/null || cd /
+          echo "Starting development server on port 8080..."
+          python3 -m http.server 8080
+      initContainers:
+      - name: wait-for-dependencies
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for external dependencies..."
+          until nc -z boulder-mysql 3306; do
+            echo "Waiting for MariaDB..."
+            sleep 2
+          done
+          until nc -z boulder-proxysql 6033; do
+            echo "Waiting for ProxySQL..."
+            sleep 2
+          done
+          echo "Dependencies ready!"
+      volumes:
+      - name: boulder-config
+        configMap:
+          name: boulder-config
+      - name: boulder-certs
+        emptyDir: {}
+      - name: boulder-secrets
+        emptyDir: {}

@@ -1,0 +1,18 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: boulder-k8s
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Boulder WFE2 port
+  - containerPort: 30001
+    hostPort: 4001
+    protocol: TCP
+  # Boulder SFE port
+  - containerPort: 30003
+    hostPort: 4003
+    protocol: TCP
+  # Jaeger UI
+  - containerPort: 30686
+    hostPort: 16686
+    protocol: TCP

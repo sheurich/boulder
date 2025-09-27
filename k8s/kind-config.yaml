@@ -1,0 +1,39 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: boulder-k8s
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "node-role.kubernetes.io/control-plane=true"
+  extraPortMappings:
+  # Boulder WFE2 port
+  - containerPort: 30001
+    hostPort: 4001
+    protocol: TCP
+  # Boulder SFE port
+  - containerPort: 30003
+    hostPort: 4003
+    protocol: TCP
+  # Jaeger UI
+  - containerPort: 30686
+    hostPort: 16686
+    protocol: TCP
+  # Consul UI
+  - containerPort: 30500
+    hostPort: 8500
+    protocol: TCP
+  # ProxySQL Web UI
+  - containerPort: 30080
+    hostPort: 6080
+    protocol: TCP
+- role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "node-role.kubernetes.io/worker=true"
