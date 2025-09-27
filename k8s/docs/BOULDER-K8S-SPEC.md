@@ -21,11 +21,98 @@ This document describes how to run the **Boulder** ACME server and its supportin
      - Configuration inventory with all 30+ config files mapped
      - Service startup sequence diagram
 
-2. **Phase 1: External Dependencies First**
+2. Phase 1: Drop-in CI Parity on Kubernetes (kind)
 
-   - Move Boulder’s external dependencies (MariaDB, Redis, Consul, ProxySQL) into Kubernetes Deployments/StatefulSets and Services.
-   - Boulder itself will remain bundled in a single container initially, running `test.sh` and `startservers.py` as before.
-   - Kubernetes’ role in this phase is simply replacing Docker Compose’s orchestration of non-Boulder services.
+Goal
+
+Run the existing Boulder CI integration environment unchanged in behavior on a local Kubernetes cluster (kind), acting as a drop-in replacement for Docker Compose. Boulder remains a single container running test.sh/startservers.py; Kubernetes only replaces Compose’s orchestration of non-Boulder services.
+
+Non-Goals (Phase 1)
+	•	No splitting of Boulder services.
+	•	No new features (mesh, HPAs, multi-network segmentation, etc.).
+	•	No changes to test harness semantics or expected outputs.
+	•	No production-grade HA/DR; this is CI parity, not prod hardening.
+
+Success Criteria / Acceptance Tests
+	1.	Test Parity: The full CI suite passes with identical pass/fail outcomes as Compose on the same commit.
+	2.	No Harness Changes: CI entry points (test.sh, t.sh, v2_integration.py) are invoked the same way. Any Kubernetes glue must be behind those entry points (e.g., a wrapper that runs the same commands inside the Boulder pod).
+	3.	Network/Port Parity: Services are reachable under the same hostnames/ports the tests expect (see “Service Naming Parity”).
+	4.	Image & Config Parity: All images/configs/fixtures are the same as Compose (pinned tags or digests), producing identical behavior.
+	5.	Parallel CI Mode: CI can run Compose and K8s jobs side-by-side; a parity checker confirms identical results (exit codes, key log markers).
+
+Deliverables
+	•	k8s/ directory (in-repo) containing:
+	•	cluster/kind-config.yaml (kind cluster def; pinned Kubernetes version).
+	•	manifests/ for external deps (MariaDB, Redis×2, Consul, ProxySQL, any test servers used today).
+	•	services/ shim Services that preserve Compose hostnames/ports.
+	•	scripts/:
+	•	k8s-up.sh / k8s-down.sh (create/destroy kind, apply manifests).
+	•	tk8s.sh / tnk8s.sh thin wrapper that runs the existing test.sh (with `config` or `config-next`) inside the Boulder pod (e.g., kubectl exec), so call sites don’t change.
+	•	README.md with one-command flows: make kind-up, make k8s-ci, make clean.
+	•	ADR-001 (repo structure) and a brief Phase-1 scope note in k8s/README.md.
+	•	CI workflow that can toggle orchestration via BOULDER_CI_ORCH={compose|k8s} and optionally run both then compare.
+
+Cluster & Tooling Constraints
+	•	Cluster: kind (pinned version), single node, default CNI.
+	•	LoadBalancer: Not required in Phase 1. Use ClusterIP + NodePort/extraPortMappings only if the tests truly require host-reachable ports; otherwise keep traffic in-cluster.
+	•	Ingress/mesh: Not used in Phase 1.
+	•	Kubernetes version: Pin (e.g., 1.29/1.30) to avoid CI drift.
+
+Service Naming Parity (Critical)
+
+To keep the test harness untouched:
+	•	Create Kubernetes Services with the exact DNS names the tests/Compose expect (e.g., if Compose used mariadb, expose a Service named mariadb on the same port).
+	•	Where Compose used multiple ports per service, mirror them on the same Service if possible; otherwise create clearly named companion Services.
+	•	If any component relies on localhost ports, either:
+	•	run the tests inside the Boulder pod (preferred), or
+	•	use kind extraPortMappings or hostPort for those specific cases (documented in kind-config.yaml).
+
+Images, Config, and Secrets
+	•	Use the exact images as Compose (prefer digest pins).
+	•	Mount the same config files and test fixtures (ConfigMaps/Secrets only as a transport; no format changes).
+	•	Secrets in Phase 1 are test-only materials already present in the repo (e.g., /test/certs/ipki/), mounted as Kubernetes Secrets.
+	•	Environment parity: propagate the same env vars the scripts expect; avoid renaming.
+
+External Dependencies (K8s-managed; Boulder stays monolith)
+	•	MariaDB: StatefulSet + PVC; same schema/init path as Compose.
+	•	Redis (×2): Deployments (PVC only if Compose used persistence).
+	•	Consul, ProxySQL: Deployments/StatefulSets mirroring Compose configs.
+	•	Any test servers (CT log, AIA, S3 mock, challenge server, etc.) that the current CI actually uses are included. (If not used in Phase 1 CI, defer to later phases.)
+
+Note: Keep initialization minimal—only what Compose already does. If Compose runs inline scripts, run the same scripts via a Job/InitContainer, not a re-imagined flow.
+
+Orchestration & Startup
+	•	Keep Boulder as one container launched exactly as today with startservers.py and test.sh.
+	•	External deps get basic readiness probes approximating Compose’s “up” condition (e.g., TCP health or simple gRPC health where available). No aggressive timeouts yet.
+	•	No change to Boulder’s startup ordering logic—Kubernetes just guarantees deps are reachable; startservers.py remains the source of truth.
+
+Test Execution Path
+	•	`tk8s.sh` creates the cluster (if needed), applies manifests, waits for readiness, then:
+      •	`kubectl exec <boulder-pod> -- /path/to/test.sh` (or equivalent).
+   •  This mirrors the existing `t.sh` → `test.sh` path.
+      This preserves the test process environment and filesystem expectations.
+	•	Log/Artifact collection: kubectl logs and kubectl cp helpers matching Compose’s log bundle output layout.
+
+Parity Checker
+	•	GitHub Actions can run both Compose and K8s jobs on the same PR/commit in parallel.
+
+   A tiny script compares:
+      •	Exit code,
+      •	Count of passed/failed tests,
+      •	Presence of known pass/fail markers in logs.
+   Used by CI when running Compose vs K8s in parallel on the same commit.
+
+Risks & Mitigations
+	•	DNS/name mismatches → solved by Service naming parity and running tests inside the Boulder pod.
+	•	Port exposure in kind → avoid unless truly required; otherwise use extraPortMappings for a few well-known ports.
+	•	Config drift → pin images/config; add a parity check job to catch divergences early.
+
+Milestones (Checklist)
+	•	k8s/ scaffolding (cluster config, manifests, scripts, README).
+	•	Services mirror Compose hostnames/ports.
+	•	External deps healthy; Boulder pod boots and runs tests via kubectl exec.
+	•	CI job for K8s path; optional parallel parity job.
+	•	Green CI parity on a representative PR set.
 
 3. **Phase 2: Split Boulder Services with Service Grouping**
 
