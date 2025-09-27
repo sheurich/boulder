@@ -1,200 +1,236 @@
-# Boulder Kubernetes Phase 1 Implementation - COMPLETE ✅
+# Boulder Kubernetes Phase 1 Implementation - IN PROGRESS ⚠️
 
 ## Executive Summary
 
-Phase 1 of the Boulder Kubernetes migration has been successfully completed. All requirements from `BOULDER-K8S-SPEC.md` have been implemented, tested, and validated. The implementation provides a fully functional Kubernetes environment that maintains backward compatibility with the existing Docker Compose setup while enabling future migration phases.
+Phase 1 of the Boulder Kubernetes migration is currently **IN PROGRESS**. Significant progress has been made with core infrastructure and scripts implemented, but the full implementation is not yet complete. This report documents the current state and remaining work items.
 
-## Completed Deliverables
+## Current Status
 
-### 1. Core Script Enhancement (`tk8.sh`)
-- ✅ Full Kubernetes test runner equivalent to `t.sh`
-- ✅ Database initialization automation
-- ✅ Certificate generation support
-- ✅ Multi-platform support (kind, minikube, external clusters)
-- ✅ Proper cleanup and namespace management
+### 1. Core Scripts (`tk8s.sh` and `tnk8s.sh`) ✅
+- ✅ **tk8s.sh** - Kubernetes test runner using kubectl exec approach
+- ✅ **tnk8s.sh** - Config-next variant of the test runner
+- ✅ **k8s/scripts/k8s-up.sh** - Boulder deployment startup script
+- ✅ **k8s/scripts/k8s-down.sh** - Boulder deployment cleanup script
+- ✅ Uses persistent Boulder monolith deployment with kubectl exec
+- ✅ Support for standard config and config-next
 
-### 2. Infrastructure Services (All 7 Required)
-All external dependencies successfully migrated to Kubernetes:
-- ✅ **MariaDB** (`bmysql`) - Database backend
-- ✅ **Redis** (`bredis-1`, `bredis-2`) - Rate limiting backend
-- ✅ **Consul** (`bconsul`) - Service discovery
-- ✅ **ProxySQL** (`bproxysql`) - Database connection pooling
-- ✅ **Jaeger** (`bjaeger`) - Distributed tracing
-- ✅ **PKIMetal** (`bpkimetal`) - Certificate validation
+### 2. Infrastructure Services ✅
+All external dependencies have Kubernetes manifests:
+- ✅ **MariaDB** - Database backend in `/k8s/manifests/mariadb/`
+- ✅ **Redis** - Rate limiting backend in `/k8s/manifests/redis/`
+- ✅ **Consul** - Service discovery in `/k8s/manifests/consul/`
+- ✅ **ProxySQL** - Database connection pooling in `/k8s/manifests/proxysql/`
+- ✅ **Jaeger** - Distributed tracing in `/k8s/manifests/jaeger/`
+- ✅ **PKIMetal** - Certificate validation in `/k8s/manifests/pkimetal/`
 
-### 3. Test Servers (All 6 Required)
-Complete test infrastructure deployed:
-- ✅ **Challenge Test Server** - ACME challenge validation (HTTP-01, DNS-01, TLS-ALPN-01)
-- ✅ **CT Log Test Server** - Certificate Transparency testing
-- ✅ **AIA Test Server** - Authority Information Access
-- ✅ **S3 Test Server** - CRL storage simulation
-- ✅ **Pardot Test Server** - Salesforce integration testing
-- ✅ **Zendesk Test Server** - Support ticket integration
+### 3. Test Servers ⚠️
+Test server manifests created but verification needed:
+- ⚠️ **Test Servers** - Defined in `/k8s/test/test-servers.yaml`
+- ⚠️ **Challenge Test Server** - HTTP-01, DNS-01, TLS-ALPN-01 validation
+- ⚠️ **CT Log Test Server** - Certificate Transparency testing
+- ⚠️ **Network Configuration** - Multi-network setup for different challenge types
+- **Status**: Manifests exist but need deployment testing and verification
 
-### 4. Boulder Monolithic Deployment
-- ✅ **Single container running all services** via `startservers.py`
-- ✅ **Persistent deployment** (not just test jobs)
-- ✅ **All required ports exposed** (WFE2: 4001, SFE: 4003, etc.)
-- ✅ **Proper service discovery** configuration
+### 4. Boulder Monolithic Deployment ✅
+- ✅ **Persistent Boulder deployment** using monolith approach
+- ✅ **kubectl exec integration** - Tests run inside persistent pod
+- ✅ **Boulder monolith manifest** in `/k8s/test/boulder-monolith.yaml`
+- ✅ **Service definitions** in `/k8s/test/services.yaml`
+- ✅ **Configuration management** via ConfigMaps
 
-### 5. Database Initialization System
-- ✅ **Automated database creation** (4 databases)
-- ✅ **Migration runner** with sql-migrate
-- ✅ **User permission setup**
-- ✅ **Idempotent design** (safe to run multiple times)
-- ✅ **ProxySQL configuration**
+### 5. Database Initialization System ✅
+- ✅ **Database initialization job** in `/k8s/test/database-init-job.yaml`
+- ✅ **Migration support** with sql-migrate integration
+- ✅ **User and database creation** automation
+- ✅ **ProxySQL configuration** setup
+- ✅ **ConfigMap integration** for database configurations
 
-### 6. Network Configuration
-- ✅ **Three network segments** implemented:
-  - Internal Network (bouldernet equivalent)
-  - Public Network 1 (publicnet for HTTP-01)
-  - Public Network 2 (publicnet2 for TLS-ALPN-01)
-- ✅ **NetworkPolicies** for traffic isolation
-- ✅ **LoadBalancer services** for external access
-- ✅ **NodePort fallback** for local development
+### 6. Network Configuration ⚠️
+- ✅ **Network policies** defined in `/k8s/test/network-policies.yaml`
+- ✅ **LoadBalancer services** in `/k8s/test/loadbalancer.yaml`
+- ⚠️ **Multi-network setup** - Configured but needs validation
+- **Status**: Network manifests exist but require testing for proper isolation
 
 ## Files Created/Modified
 
-### New Kubernetes Manifests
-1. `k8s/test/test-servers.yaml` - All 6 test server deployments
-2. `k8s/test/boulder-monolith.yaml` - Boulder monolithic deployment
-3. `k8s/test/database-init-job.yaml` - Database initialization job
-4. `k8s/test/network-policies.yaml` - Network segmentation policies
-5. `k8s/test/loadbalancer.yaml` - External access services
-6. `k8s/test/validate-phase1.sh` - Validation script
+### Main Scripts
+1. ✅ `tk8s.sh` - Kubernetes test runner (uses kubectl exec)
+2. ✅ `tnk8s.sh` - Config-next variant test runner
+3. ✅ `k8s/scripts/k8s-up.sh` - Boulder deployment startup
+4. ✅ `k8s/scripts/k8s-down.sh` - Boulder deployment cleanup
 
-### Enhanced Existing Files
-1. `tk8.sh` - Added database initialization, envsubst support
-2. `k8s/test/services.yaml` - Added network labels
-3. `k8s/test/configmaps.yaml` - Maintained existing configs
+### Kubernetes Manifests
+1. ✅ `k8s/test/boulder-monolith.yaml` - Boulder persistent deployment
+2. ✅ `k8s/test/services.yaml` - Service definitions
+3. ✅ `k8s/test/configmaps.yaml` - Configuration management
+4. ✅ `k8s/test/database-init-job.yaml` - Database initialization
+5. ⚠️ `k8s/test/test-servers.yaml` - Test server deployments (needs verification)
+6. ⚠️ `k8s/test/network-policies.yaml` - Network isolation (needs testing)
+7. ⚠️ `k8s/test/loadbalancer.yaml` - External access (needs validation)
 
-## Validation Results
+### Directory Structure
+1. ✅ `k8s/manifests/` - Infrastructure service manifests
+2. ✅ `k8s/scripts/` - Operational scripts
+3. ✅ `k8s/test/` - Test infrastructure and manifests
+
+## Current Implementation Approach
+
+### kubectl exec Pattern
+The implementation uses a **persistent Boulder monolith deployment** with tests executed via `kubectl exec`:
 
 ```bash
-./k8s/test/validate-phase1.sh
-
-=========================================
-Phase 1 Kubernetes Implementation Validator
-=========================================
-Total checks: 44
-Passed: 44
-Failed: 0
-
-✓ All Phase 1 requirements are satisfied!
+# Example usage
+./tk8s.sh --unit  # Runs unit tests inside persistent Boulder pod
+./tnk8s.sh --integration  # Config-next integration tests
 ```
 
-## Key Achievements
+### Key Architecture Decisions
+1. **Persistent Deployment**: Boulder runs as a long-lived deployment, not job-based
+2. **kubectl exec**: Tests execute inside the running Boulder container
+3. **Service Integration**: All infrastructure services deployed alongside Boulder
+4. **Configuration Management**: Uses ConfigMaps for both standard and config-next
 
-### 1. **Zero Code Changes to Boulder**
-- Maintains complete compatibility with existing Boulder codebase
-- Uses same configuration files and startup scripts
-- No modifications to Boulder services required
+## What Has Been Accomplished ✅
 
-### 2. **Complete Feature Parity**
-- All Docker Compose functionality replicated
-- Test suite runs identically
-- Service discovery maintained through Consul
+### 1. **Core Infrastructure**
+- ✅ Directory structure reorganized per specification
+- ✅ Service manifests created for all 6 infrastructure components
+- ✅ Boulder monolith deployment with persistent approach
+- ✅ Database initialization automation
 
-### 3. **Production-Ready Foundation**
-- Proper resource limits and requests
-- Health checks and readiness probes
-- Network isolation and security policies
-- Scalable architecture for future phases
+### 2. **Test Runner Implementation**
+- ✅ `tk8s.sh` script using kubectl exec pattern
+- ✅ `tnk8s.sh` for config-next testing
+- ✅ Support for all major test types (unit, integration, lints)
+- ✅ Proper cleanup and error handling
 
-### 4. **Developer Experience**
-- Simple `tk8.sh` wrapper maintains familiar interface
-- Automatic dependency checking
-- Comprehensive error messages
-- Color-coded output for clarity
+### 3. **Kubernetes Integration**
+- ✅ Service discovery via Kubernetes DNS + Consul
+- ✅ ConfigMap-based configuration management
+- ✅ Namespace isolation and resource management
+- ✅ Compatible with kind, minikube, and external clusters
 
-## Usage Instructions
+### 4. **Operational Scripts**
+- ✅ `k8s-up.sh` for Boulder deployment
+- ✅ `k8s-down.sh` for cleanup operations
+- ✅ Service naming aligned with Docker Compose equivalents
+
+## Current Usage
 
 ### Prerequisites
 1. Kubernetes cluster (kind, minikube, or external)
-2. kubectl configured
-3. Docker images built (`docker compose build boulder`)
-4. envsubst installed (for configuration)
+2. kubectl configured and connected
+3. Boulder Docker images built (`docker compose build boulder`)
 
 ### Running Tests
 ```bash
-# Run all tests (equivalent to t.sh)
-./tk8.sh
+# Run unit tests (uses persistent Boulder deployment)
+./tk8s.sh --unit
 
-# Run unit tests only
-./tk8.sh --unit
-
-# Run integration tests only
-./tk8.sh --integration
+# Run integration tests
+./tk8s.sh --integration
 
 # Run with config-next
-./tk8.sh --config-next
+./tnk8s.sh --unit
+./tnk8s.sh --integration
 
-# Keep namespace for debugging
-./tk8.sh --no-cleanup
+# Deploy Boulder infrastructure
+./k8s/scripts/k8s-up.sh
+
+# Clean up deployment
+./k8s/scripts/k8s-down.sh
 ```
 
-### Deploying Boulder Monolith
+### Manual Deployment
 ```bash
-# Create namespace
-kubectl create namespace boulder-test
+# Deploy infrastructure services
+kubectl apply -k k8s/manifests/
 
-# Apply all manifests
-kubectl apply -f k8s/test/services.yaml -n boulder-test
-kubectl apply -f k8s/test/configmaps.yaml -n boulder-test
-kubectl apply -f k8s/test/test-servers.yaml -n boulder-test
-kubectl apply -f k8s/test/database-init-job.yaml -n boulder-test
-kubectl apply -f k8s/test/boulder-monolith.yaml -n boulder-test
-kubectl apply -f k8s/test/network-policies.yaml -n boulder-test
-kubectl apply -f k8s/test/loadbalancer.yaml -n boulder-test
+# Deploy Boulder monolith
+kubectl apply -f k8s/test/services.yaml
+kubectl apply -f k8s/test/configmaps.yaml
+kubectl apply -f k8s/test/boulder-monolith.yaml
 
-# Wait for services
-kubectl wait --for=condition=Available deployment --all -n boulder-test --timeout=300s
+# Initialize databases
+kubectl apply -f k8s/test/database-init-job.yaml
 ```
 
-## Migration Path Forward
+## Remaining Work Items
 
-### Phase 2: Service Separation
-With Phase 1 complete, the foundation is ready for:
-- Splitting Boulder services into individual deployments
-- Implementing service grouping strategy
-- Adding Kubernetes-native health checks
+### High Priority
+1. **Test Server Validation** ⚠️
+   - Verify test server deployments work correctly
+   - Test multi-network setup for different challenge types
+   - Validate service connectivity and DNS resolution
 
-### Phase 3: Kubernetes-Native Features
-- Replace Consul with Kubernetes service discovery
-- Implement Horizontal Pod Autoscaling
-- Add Prometheus metrics collection
+2. **Integration Testing** ⚠️
+   - Run full test suite end-to-end in Kubernetes
+   - Verify all test types pass consistently
+   - Test both standard config and config-next
 
-### Phase 4: Production Optimization
-- Service mesh integration (Istio/Linkerd)
-- GitOps deployment (ArgoCD/Flux)
-- Multi-region deployment strategies
+3. **Network Policies Validation** ⚠️
+   - Verify network isolation works as expected
+   - Test LoadBalancer configurations
+   - Validate external access patterns
 
-## Known Limitations
+### Medium Priority
+1. **CI/CD Integration**
+   - Integrate Kubernetes testing into existing CI workflows
+   - Add automated validation scripts
+   - Document CI/CD usage patterns
 
-1. **Host Path Volumes**: Currently uses host paths for source code - should be replaced with ConfigMaps or persistent volumes in production
-2. **Fixed IPs**: Some services use hardcoded IPs that should be replaced with service discovery
-3. **Certificate Generation**: Runs per-pod instead of shared volume (acceptable for testing)
-4. **LoadBalancer IPs**: External IPs not configured (requires cloud provider or MetalLB)
+2. **Documentation Updates**
+   - Update deployment guides
+   - Add troubleshooting sections
+   - Create operator runbooks
 
-## Testing Validation
+### Future Phases
+- **Phase 2**: Service separation and microservices migration
+- **Phase 3**: Kubernetes-native features (HPA, service mesh)
+- **Phase 4**: Production hardening and multi-region support
 
-The implementation has been validated through:
-1. ✅ Structural validation (all files and components present)
-2. ✅ Configuration validation (all required settings)
-3. ✅ Manifest syntax validation (kubectl dry-run)
-4. ✅ Comprehensive validation script (44 checks passed)
+## Known Issues and Limitations
 
-## Conclusion
+### Current Issues
+1. **Test Server Verification** - Test servers need deployment validation
+2. **Network Isolation Testing** - Multi-network setup needs verification
+3. **Full Integration Testing** - End-to-end testing in Kubernetes environment
 
-Phase 1 implementation successfully provides a complete Kubernetes environment for Boulder that:
-- Maintains 100% compatibility with existing Docker Compose setup
-- Provides all required external dependencies
-- Runs Boulder as a monolithic container as specified
-- Implements proper network isolation
-- Includes automated database initialization
-- Offers excellent developer experience
+### Design Limitations
+1. **Host Path Volumes** - Uses host paths for source code mounting
+2. **Monolithic Approach** - Single Boulder container (by design for Phase 1)
+3. **Manual Service Management** - Some manual steps still required
+4. **LoadBalancer Dependencies** - Requires cloud provider or MetalLB for external access
 
-The implementation is **ready for testing and Phase 2 migration**.
+## Testing Status
+
+### Completed Validation
+1. ✅ **Script Functionality** - tk8s.sh and tnk8s.sh work correctly
+2. ✅ **Manifest Syntax** - All YAML files pass kubectl validation
+3. ✅ **Boulder Deployment** - Monolith deployment works
+4. ✅ **Database Integration** - Database initialization successful
+
+### Pending Validation
+1. ⚠️ **Test Server Deployment** - Need to verify all test servers work
+2. ⚠️ **Network Policies** - Multi-network isolation testing
+3. ⚠️ **Full Test Suite** - End-to-end integration testing
+4. ⚠️ **CI Integration** - Automated testing in CI environment
+
+## Current Status Summary
+
+Phase 1 implementation has made **significant progress** with:
+- ✅ Core infrastructure and deployment scripts completed
+- ✅ Boulder monolith deployment working
+- ✅ kubectl exec test pattern implemented
+- ✅ Database initialization automated
+- ✅ Service manifests created for all dependencies
+
+**Remaining work focuses on validation and testing** of the complete system, particularly:
+- Test server deployment verification
+- Full integration testing
+- Network policy validation
+
+The foundation is solid and the implementation approach is proven to work. **Phase 1 is in progress with core functionality complete**.
 
 ## Support
 
@@ -205,4 +241,5 @@ For issues or questions:
 - Run validation: `./k8s/test/validate-phase1.sh`
 
 ---
-*Phase 1 Complete - September 27, 2025*
+*Phase 1 Status Report - September 27, 2025*
+*Status: IN PROGRESS - Core implementation complete, validation in progress*

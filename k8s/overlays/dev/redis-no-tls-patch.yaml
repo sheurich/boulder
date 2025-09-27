@@ -93,3 +93,28 @@ spec:
     targetPort: 6379
     protocol: TCP
     name: redis
+---
+# Service aliases for Consul compatibility (matching docker-compose service names)
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-1
+  namespace: boulder
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-2
+  namespace: boulder
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis

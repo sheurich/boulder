@@ -1,0 +1,137 @@
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bmysql
+  labels:
+    app: bmysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: bmysql
+---
+# ProxySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bproxysql
+  labels:
+    app: bproxysql
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - name: admin
+    port: 6032
+    targetPort: 6032
+  - name: mysql
+    port: 6033
+    targetPort: 6033
+  selector:
+    app: bproxysql
+---
+# Redis Service 1
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-1
+  labels:
+    app: bredis-1
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: bredis-1
+---
+# Redis Service 2
+apiVersion: v1
+kind: Service
+metadata:
+  name: bredis-2
+  labels:
+    app: bredis-2
+    network-segment: internal
+    app-type: infrastructure
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: bredis-2
+---
+# Consul Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bconsul
+  labels:
+    app: bconsul
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - name: http
+    port: 8500
+    targetPort: 8500
+  - name: rpc
+    port: 8300
+    targetPort: 8300
+  - name: serf-lan
+    port: 8301
+    targetPort: 8301
+  - name: serf-wan
+    port: 8302
+    targetPort: 8302
+  - name: dns
+    port: 8600
+    targetPort: 8600
+    protocol: UDP
+  selector:
+    app: bconsul
+---
+# Jaeger Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bjaeger
+  labels:
+    app: bjaeger
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - name: ui
+    port: 16686
+    targetPort: 16686
+  - name: collector
+    port: 14268
+    targetPort: 14268
+  selector:
+    app: bjaeger
+---
+# PKI Metal Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpkimetal
+  labels:
+    app: bpkimetal
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: bpkimetal
