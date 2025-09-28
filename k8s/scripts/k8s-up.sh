@@ -289,7 +289,7 @@ function wait_for_services() {
   print_heading "Waiting for services to be ready..."
 
   # Complete list of all infrastructure services with their types
-  local statefulsets=("bmysql" "bredis-1" "bredis-2" "bconsul")
+  local statefulsets=("bmysql" "boulder-redis-1" "boulder-redis-2" "bconsul")
   local deployments=("bjaeger" "bproxysql" "bpkimetal")
 
   # Wait for StatefulSets to be ready
@@ -353,7 +353,7 @@ function run_database_initialization() {
     print_error "Database initialization failed or timed out"
 
     # Get pod logs for debugging
-    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l "job-name=database-init" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    local pod_name=$(kubectl get pods -n "$NAMESPACE" -l "app=database-init" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
     if [ -n "$pod_name" ]; then
       print_error "Database initialization pod logs:"
       kubectl logs "$pod_name" -n "$NAMESPACE" || true
