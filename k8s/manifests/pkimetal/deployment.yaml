@@ -29,10 +29,10 @@ spec:
           name: metrics
         resources:
           requests:
-            memory: "256Mi"
+            memory: "512Mi"
             cpu: "50m"
           limits:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "200m"
 # Health checks disabled for Phase 1 CI parity
         # TODO: Determine correct health check endpoint

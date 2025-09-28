@@ -2,6 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: database-init
+  namespace: boulder-test
   labels:
     app: boulder-database-init
     component: database-setup
@@ -11,12 +12,13 @@ spec:
       labels:
         app: boulder-database-init
         component: database-setup
+        network: internal
     spec:
       restartPolicy: Never
       # Init containers to wait for dependencies
       initContainers:
       - name: wait-for-mysql
-        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        image: letsencrypt/boulder-tools:latest
         imagePullPolicy: IfNotPresent
         command: ['bash', '-c']
         args:
@@ -28,7 +30,7 @@ spec:
           done
           echo "MySQL is ready"
       - name: wait-for-proxysql
-        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        image: letsencrypt/boulder-tools:latest
         imagePullPolicy: IfNotPresent
         command: ['bash', '-c']
         args:
@@ -41,7 +43,7 @@ spec:
           echo "ProxySQL is ready"
       containers:
       - name: database-init
-        image: letsencrypt/boulder-tools:$BOULDER_TOOLS_TAG
+        image: letsencrypt/boulder-tools:latest
         imagePullPolicy: IfNotPresent
         command: ["bash", "-c"]
         args:
@@ -199,7 +201,7 @@ spec:
         workingDir: /boulder
         env:
         - name: BOULDER_CONFIG_DIR
-          value: "$BOULDER_CONFIG_DIR"
+          value: "test/config"
         - name: GOPATH
           value: "/tmp/go"
         - name: GOCACHE

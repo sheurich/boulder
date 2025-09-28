@@ -58,6 +58,7 @@ spec:
                 --key /tls/redis/tls.key \
                 --cacert /tls/ca/ca.crt \
                 -p 4218 \
+                --user admin-user \
                 -a 435e9c4225f08813ef3af7c725f0d30d263b9cd3 \
                 --no-auth-warning \
                 ping
@@ -78,6 +79,7 @@ spec:
                 --key /tls/redis/tls.key \
                 --cacert /tls/ca/ca.crt \
                 -p 4218 \
+                --user admin-user \
                 -a 435e9c4225f08813ef3af7c725f0d30d263b9cd3 \
                 --no-auth-warning \
                 ping
