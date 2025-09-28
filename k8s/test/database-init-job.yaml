@@ -1,12 +1,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: database-init
+  generateName: database-init-
   namespace: boulder-test
   labels:
-    app: boulder-database-init
+    app: database-init
     component: database-setup
 spec:
+  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
+  backoffLimit: 2  # Allow 2 retries
   template:
     metadata:
       labels:
@@ -232,5 +234,4 @@ spec:
       - name: boulder-source
         hostPath:
           path: ${BOULDER_REPO_PATH}
-  backoffLimit: 2
   activeDeadlineSeconds: 1800  # 30 minutes timeout
