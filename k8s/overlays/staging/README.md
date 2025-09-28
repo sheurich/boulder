@@ -228,7 +228,7 @@ kubectl delete namespace boulder-staging
 ## See Also
 
 - [Phase Status Tracking](PHASE-STATUS.md)
-- [Boulder K8s Specification](../../docs/BOULDER-K8S-SPEC.md)
+- [Boulder K8s Specification](../../docs/SPEC.md)
 - [Test Profile](../test/README.md)
 - [Development Profile](../dev/README.md)
 - [ADR-002 Multi-Profile Strategy](../../docs/ADR-002-MULTI-PROFILE-STRATEGY.md)

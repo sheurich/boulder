@@ -128,7 +128,7 @@ CI workflows will:
 
 ## References
 
-- Boulder K8s Specification (k8s/docs/BOULDER-K8S-SPEC.md)
+- Boulder K8s Specification (k8s/docs/SPEC.md)
 - Phase 1 Completion Report (k8s/docs/PHASE1-COMPLETION-REPORT.md)
 - Kustomize Documentation: https://kustomize.io/
 - Let's Encrypt Staging Environment: https://letsencrypt.org/docs/staging-environment/

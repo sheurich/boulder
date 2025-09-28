@@ -178,7 +178,7 @@ kubectl delete namespace boulder
 
 ## See Also
 
-- [Boulder K8s Specification](../../docs/BOULDER-K8S-SPEC.md)
+- [Boulder K8s Specification](../../docs/SPEC.md)
 - [Phase 1 Completion Report](../../docs/PHASE1-COMPLETION-REPORT.md)
 - [Main README](../../README.md)
 - [Development Profile](../dev/README.md)
