@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: boulder-pkimetal
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: boulder-pkimetal
     app.kubernetes.io/name: pkimetal

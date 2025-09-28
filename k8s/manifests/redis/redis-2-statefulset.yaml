@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: boulder-redis-2
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: boulder-redis-2
     app.kubernetes.io/name: redis

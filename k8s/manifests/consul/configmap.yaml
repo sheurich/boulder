@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: consul-config
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: consul
     app.kubernetes.io/name: consul

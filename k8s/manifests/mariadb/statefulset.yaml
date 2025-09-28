@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: boulder-mysql
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: boulder-mysql
     app.kubernetes.io/name: mariadb

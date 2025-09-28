@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: redis
     app.kubernetes.io/name: redis

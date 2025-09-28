@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: boulder-proxysql
-  namespace: boulder
+  namespace: boulder-test
   labels:
     app: boulder-proxysql
     app.kubernetes.io/name: proxysql
