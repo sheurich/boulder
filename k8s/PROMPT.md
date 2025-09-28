@@ -11,11 +11,11 @@ Implement Phase 1 of Boulder's Kubernetes migration as specified in `docs/SPEC.m
 cat docs/SPEC.md | head -128  # Review Phase 1 requirements
 
 # Inventory k8s/ directory
-tree .         # Quick directory structure
+tree         # Quick directory structure
 
 # Check git status
-cd .. && git status
-cd .. && git log --oneline -5
+git status
+git log --oneline -5
 ```
 
 ### 2. Identify and Fix Issues
@@ -58,6 +58,9 @@ Review completed work for:
 
 # Run tests (from parent directory)
 cd .. && ./tk8s.sh        # Should match t.sh behavior
+                          # Will build/start everything needed
+                          # Starts cluster if not already running
+                          # Does not tear down after tests
 
 # Clean up
 ./scripts/k8s-down.sh
