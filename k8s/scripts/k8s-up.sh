@@ -293,15 +293,22 @@ function run_database_initialization() {
 function start_boulder_monolith() {
   print_heading "Starting Boulder monolith deployment..."
 
+  # Determine Boulder repository path (absolute path)
+  # We're in k8s/scripts, so Boulder root is ../..
+  BOULDER_REPO_PATH="$(cd ../.. && pwd)"
+  print_heading "Using Boulder repository path: $BOULDER_REPO_PATH"
+
   # Apply Boulder monolith deployment
   export BOULDER_TOOLS_TAG=${BOULDER_TOOLS_TAG:-latest}
   export BOULDER_CONFIG_DIR=${BOULDER_CONFIG_DIR:-test/config}
+  export BOULDER_REPO_PATH
 
   if command -v envsubst >/dev/null 2>&1; then
     envsubst < "k8s/test/boulder-monolith.yaml" | kubectl apply -f - -n "$NAMESPACE"
   else
-    # Fallback: substitute manually
-    sed "s/\${BOULDER_TOOLS_TAG}/${BOULDER_TOOLS_TAG}/g; s/\${BOULDER_CONFIG_DIR}/${BOULDER_CONFIG_DIR//\//\\/}/g" "k8s/test/boulder-monolith.yaml" | kubectl apply -f - -n "$NAMESPACE"
+    # Fallback: substitute manually - need to escape path slashes for sed
+    BOULDER_REPO_PATH_ESCAPED="${BOULDER_REPO_PATH//\//\\/}"
+    sed "s/\${BOULDER_TOOLS_TAG}/${BOULDER_TOOLS_TAG}/g; s/\${BOULDER_CONFIG_DIR}/${BOULDER_CONFIG_DIR//\//\\/}/g; s/\${BOULDER_REPO_PATH}/${BOULDER_REPO_PATH_ESCAPED}/g" "k8s/test/boulder-monolith.yaml" | kubectl apply -f - -n "$NAMESPACE"
   fi
 
   # Wait for Boulder deployment to be ready

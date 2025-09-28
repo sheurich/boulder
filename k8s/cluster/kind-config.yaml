@@ -3,12 +3,6 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: boulder-k8s
 nodes:
 - role: control-plane
-  kubeadmConfigPatches:
-  - |
-    kind: InitConfiguration
-    nodeRegistration:
-      kubeletExtraArgs:
-        node-labels: "node-role.kubernetes.io/control-plane=true"
   extraPortMappings:
   # Boulder WFE2 port
   - containerPort: 30001
@@ -30,10 +24,3 @@ nodes:
   - containerPort: 30080
     hostPort: 6080
     protocol: TCP
-- role: worker
-  kubeadmConfigPatches:
-  - |
-    kind: JoinConfiguration
-    nodeRegistration:
-      kubeletExtraArgs:
-        node-labels: "node-role.kubernetes.io/worker=true"

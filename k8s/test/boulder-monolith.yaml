@@ -200,7 +200,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: ${BOULDER_REPO_PATH}  # Boulder repository root (will be substituted by k8s-up.sh)
       # DNS configuration to use consul for service discovery
       dnsPolicy: "None"
       dnsConfig:
