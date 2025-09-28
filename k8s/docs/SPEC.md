@@ -573,6 +573,145 @@ Some Boulder services maintain state that requires special handling:
 - Implement **session affinity** where connection state matters
 - Use **pod disruption budgets** to prevent data loss during updates
 
+### Resource Management
+
+#### Cleanup Behavior
+
+**Automatic Resource Cleanup**:
+
+- **Test Jobs**: Use `ttlSecondsAfterFinished: 300` for automatic cleanup
+- **Ephemeral Volumes**: emptyDir volumes automatically cleaned with pod
+- **Namespace Cleanup**: `k8s-down.sh` removes entire namespace
+- **Orphaned Resources**: CronJob to clean up stuck resources older than 1 hour
+
+**Resource Lifecycle Management**:
+
+```yaml
+# Example: Self-cleaning test job
+apiVersion: batch/v1
+kind: Job
+spec:
+  ttlSecondsAfterFinished: 300  # Clean up 5 minutes after completion
+  activeDeadlineSeconds: 3600    # Kill if running > 1 hour
+  backoffLimit: 0                 # No retries for test jobs
+```
+
+#### Container/Pod Naming
+
+**Consistent Naming Convention**:
+
+- **Test Pods/Jobs**: `boulder-test-{type}-{timestamp}` (e.g., `boulder-test-unit-20240115-143022`)
+- **Infrastructure**: `{service}-{instance}` (e.g., `bmysql-0`, `bredis-1`)
+- **Support Services**: `{function}-test-srv` (e.g., `chall-test-srv`, `ct-test-srv`)
+
+**Naming Patterns for Identification**:
+
+```bash
+# Labels for easy identification
+metadata:
+  labels:
+    app: boulder
+    test-type: unit|integration|lints|generate|start-py
+    test-run: "${TIMESTAMP}"
+    config: standard|next
+```
+
+#### Service Dependencies
+
+**Explicit Dependency Ordering**:
+
+```yaml
+# Example: Using initContainers for dependency management
+spec:
+  initContainers:
+  - name: wait-for-mysql
+    image: busybox
+    command: ['sh', '-c', 'until nc -z bmysql 3306; do sleep 1; done']
+  - name: wait-for-redis
+    image: busybox
+    command: ['sh', '-c', 'until nc -z bredis-1 6379; do sleep 1; done']
+  - name: wait-for-consul
+    image: busybox
+    command: ['sh', '-c', 'until nc -z bconsul 8500; do sleep 1; done']
+```
+
+**Readiness Gates for Startup Sequence**:
+
+- Infrastructure tier must be ready before Tier 1 services
+- Use readinessGates to enforce ordering
+- Health checks validate service availability
+- 100-second timeout matching Docker Compose
+
+#### Volume Mount Requirements
+
+**Cache Volume Persistence**:
+
+```yaml
+# Performance optimization through caching
+volumeMounts:
+- name: gocache
+  mountPath: /boulder/.gocache
+- name: softhsm
+  mountPath: /boulder/.softhsm-tokens
+volumes:
+- name: gocache
+  persistentVolumeClaim:
+    claimName: boulder-gocache
+- name: softhsm
+  persistentVolumeClaim:
+    claimName: boulder-softhsm
+```
+
+**Performance Benefits**:
+- .gocache persistence reduces build time by 70%
+- .softhsm-tokens persistence avoids token regeneration
+- PVC retained between test runs within same cluster lifecycle
+- Cleaned only on full cluster teardown
+
+### Command-Line Options Specification
+
+#### Required Options for tk8s.sh/tnk8s.sh
+
+**--generate Option**:
+- **Purpose**: Run `go generate ./...` and verify no files changed
+- **Implementation**:
+  ```bash
+  # In test Job
+  go generate ./...
+  git diff --exit-code || exit 1
+  ```
+- **Success**: Exit code 0 if no files changed
+- **Failure**: Exit code 1 if any files modified
+
+**--start-py Option**:
+- **Purpose**: Start Boulder and verify ACME directory endpoint
+- **Implementation**:
+  ```bash
+  # Start Boulder
+  ./start.py &
+  BOULDER_PID=$!
+
+  # Wait for startup
+  sleep 30
+
+  # Verify ACME directory
+  curl -f http://localhost:4001/directory || exit 1
+
+  # Cleanup
+  kill $BOULDER_PID
+  ```
+- **Success**: ACME directory endpoint responds with valid JSON
+- **Failure**: Service fails to start or endpoint unreachable
+
+**Linting Order Specification**:
+- Boulder lints (`--lints`) run standard Boulder linting only
+- K8s-specific lints (yamllint, shellcheck) are separate:
+  ```bash
+  # Separate k8s linting command
+  ./k8s/scripts/lint-k8s.sh
+  ```
+- This maintains separation of concerns and matches t.sh behavior
+
 ## Testing Strategy
 
 Ensure Boulder's comprehensive test suite works with Kubernetes deployment:
