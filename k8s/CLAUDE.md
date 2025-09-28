@@ -1,6 +1,6 @@
-# CLAUDE.md - Kubernetes Migration
+# k8s/CLAUDE.md - Kubernetes Migration
 
-This file provides guidance to Claude Code when working with the Boulder Kubernetes migration in the k8s/ directory.
+This file provides guidance to Claude Code when working with the Boulder Kubernetes migration in the k8s/ directory. It is present in the k8s directory. All pathnames provided in this file are relative to the Boulder repository root.
 
 ## Project Context
 
