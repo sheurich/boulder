@@ -337,12 +337,14 @@ function run_database_initialization() {
   # Apply database initialization job
   export BOULDER_TOOLS_TAG=${BOULDER_TOOLS_TAG:-latest}
   export BOULDER_CONFIG_DIR=${BOULDER_CONFIG_DIR:-test/config}
+  export BOULDER_REPO_PATH="${BOULDER_REPO_PATH:-$(cd ../.. && pwd)}"
 
   if command -v envsubst >/dev/null 2>&1; then
     envsubst < "k8s/test/database-init-job.yaml" | kubectl apply -f - -n "$NAMESPACE"
   else
     # Fallback: substitute manually
-    sed "s/\${BOULDER_TOOLS_TAG}/${BOULDER_TOOLS_TAG}/g; s/\${BOULDER_CONFIG_DIR}/${BOULDER_CONFIG_DIR//\//\\/}/g" "k8s/test/database-init-job.yaml" | kubectl apply -f - -n "$NAMESPACE"
+    BOULDER_REPO_PATH_ESCAPED="${BOULDER_REPO_PATH//\//\\/}"
+    sed "s/\${BOULDER_TOOLS_TAG}/${BOULDER_TOOLS_TAG}/g; s/\${BOULDER_CONFIG_DIR}/${BOULDER_CONFIG_DIR//\//\\/}/g; s/\${BOULDER_REPO_PATH}/${BOULDER_REPO_PATH_ESCAPED}/g" "k8s/test/database-init-job.yaml" | kubectl apply -f - -n "$NAMESPACE"
   fi
 
   # Wait for database initialization to complete

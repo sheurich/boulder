@@ -24,7 +24,7 @@ spec:
         args:
         - |
           echo "Waiting for MySQL to be ready..."
-          until python3 -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('bmysql', 3306)); s.close()" 2>/dev/null; do
+          until mysql -h bmysql -u root -e "SELECT 1;" 2>/dev/null; do
             echo "MySQL not ready, waiting..."
             sleep 3
           done
@@ -36,7 +36,7 @@ spec:
         args:
         - |
           echo "Waiting for ProxySQL to be ready..."
-          until python3 -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('bproxysql', 6033)); s.close()" 2>/dev/null; do
+          until mysql -h bproxysql -P 6033 -u root -e "SELECT 1;" 2>/dev/null; do
             echo "ProxySQL not ready, waiting..."
             sleep 3
           done

@@ -25,7 +25,7 @@ spec:
       - name: boulder
         image: letsencrypt/boulder-tools:latest
         imagePullPolicy: Never
-        command: ["python3", "./test/startservers.py"]
+        command: ["python3", "-u", "/boulder/start.py"]
         ports:
         # WFE2 - ACMEv2 API
         - containerPort: 4001
@@ -173,12 +173,12 @@ spec:
       dnsPolicy: "None"
       dnsConfig:
         nameservers:
-        - "10.96.0.10"  # kube-dns
-        - "10.244.0.10" # consul service IP (adjust as needed)
+        - "10.244.0.28"  # consul pod IP for .consul domains
+        - "10.96.0.10"   # kube-dns for kubernetes services
         searches:
+        - "service.consul"
         - "boulder-test.svc.cluster.local"
         - "svc.cluster.local"
-        - "cluster.local"
         options:
         - name: ndots
           value: "5"
