@@ -1,0 +1,331 @@
+---
+# Enhanced Network Policies for Boulder Kubernetes Deployment
+# Implements proper three-tier network isolation matching Docker Compose:
+# - bouldernet (10.77.77.0/24): Internal Boulder service communication
+# - publicnet (64.112.117.0/25): Public-facing HTTP-01 challenge validation
+# - publicnet2 (64.112.117.128/25): Public-facing TLS-ALPN-01 challenge validation
+
+# Default deny-all policy for the boulder-test namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: boulder-test
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# Boulder Core Services Network Policy
+# Special policy for Boulder monolith that can access all network segments
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: boulder-core
+  namespace: boulder-test
+  labels:
+    network-segment: boulder
+spec:
+  podSelector:
+    matchLabels:
+      network-segment: boulder
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from any pod in the namespace (for testing)
+  - from:
+    - podSelector: {}
+  # Allow external access for ACME protocol
+  - ports:
+    - protocol: TCP
+      port: 4001  # WFE2 ACME endpoint
+    - protocol: TCP
+      port: 4431  # WFE2 ACME endpoint (TLS)
+  egress:
+  # Allow access to all internal services
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: internal
+  # Allow access to all public services
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: public1
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: public2
+  # Allow access to infrastructure services
+  - to:
+    - podSelector:
+        matchLabels:
+          app-type: infrastructure
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow external network access (for CT logs, OCSP, etc)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Internal Network Policy - Infrastructure Services
+# MariaDB, Redis, Consul, ProxySQL, Jaeger, PKIMetal, CT Log Server
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-network
+  namespace: boulder-test
+  labels:
+    network-segment: internal
+spec:
+  podSelector:
+    matchLabels:
+      network-segment: internal
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from Boulder core services
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+  # Allow from other internal services
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: internal
+  # Allow from infrastructure services
+  - from:
+    - podSelector:
+        matchLabels:
+          app-type: infrastructure
+  egress:
+  # Allow to other internal services
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: internal
+  # Allow to infrastructure services
+  - to:
+    - podSelector:
+        matchLabels:
+          app-type: infrastructure
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Public Network 1 Policy - HTTP-01 Challenge Validation
+# Challenge test server for HTTP-01 challenges
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-network-1
+  namespace: boulder-test
+  labels:
+    network-segment: public1
+spec:
+  podSelector:
+    matchLabels:
+      network-segment: public1
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow HTTP/HTTPS from anywhere (public internet simulation)
+  - ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+  # Allow management access from Boulder
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+    ports:
+    - protocol: TCP
+      port: 8055  # Management interface
+  # Allow DNS challenges
+  - ports:
+    - protocol: UDP
+      port: 8053
+    - protocol: UDP
+      port: 8054
+  # Allow DoH challenges
+  - ports:
+    - protocol: TCP
+      port: 8343
+    - protocol: TCP
+      port: 8443
+  # Allow TLS-ALPN challenges
+  - ports:
+    - protocol: TCP
+      port: 5001
+  egress:
+  # Allow responses to Boulder
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Public Network 2 Policy - TLS-ALPN-01 Challenge Validation
+# Additional public network for different challenge types
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-network-2
+  namespace: boulder-test
+  labels:
+    network-segment: public2
+spec:
+  podSelector:
+    matchLabels:
+      network-segment: public2
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow TLS-ALPN-01 from anywhere
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 5001
+  # Allow management from Boulder
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+  egress:
+  # Allow responses to Boulder
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Infrastructure Services Policy - Special handling for infrastructure
+# These services need to be accessible from all network segments
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: infrastructure-services
+  namespace: boulder-test
+  labels:
+    app-type: infrastructure
+spec:
+  podSelector:
+    matchLabels:
+      app-type: infrastructure
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from Boulder core
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: boulder
+  # Allow from internal network
+  - from:
+    - podSelector:
+        matchLabels:
+          network-segment: internal
+  # Allow from other infrastructure services
+  - from:
+    - podSelector:
+        matchLabels:
+          app-type: infrastructure
+  egress:
+  # Allow to other infrastructure services
+  - to:
+    - podSelector:
+        matchLabels:
+          app-type: infrastructure
+  # Allow to internal network
+  - to:
+    - podSelector:
+        matchLabels:
+          network-segment: internal
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# External Access Policy - Services needing external UI access
+# Jaeger UI, PKIMetal UI, Consul UI
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: external-access
+  namespace: boulder-test
+  labels:
+    external-access: "true"
+spec:
+  podSelector:
+    matchLabels:
+      external-access: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow external access to web UIs
+  - ports:
+    - protocol: TCP
+      port: 16686  # Jaeger UI
+    - protocol: TCP
+      port: 8080   # PKIMetal UI
+    - protocol: TCP
+      port: 8500   # Consul UI
+  # Note: Egress is already handled by the infrastructure-services policy

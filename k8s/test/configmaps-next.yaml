@@ -1,0 +1,36 @@
+---
+# ConfigMaps for Boulder config-next configuration
+# This provides the next-generation configuration for Boulder services
+#
+# Usage:
+#   kubectl apply -f k8s/test/configmaps-next.yaml
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-config-next
+  namespace: boulder-test
+  labels:
+    app: boulder
+    config: next
+data:
+  # Mount test/config-next directory contents
+  # The actual config files will be copied from the Boulder repository
+  # during the initContainer phase
+  config-next.marker: |
+    # This ConfigMap contains Boulder config-next configuration
+    # Files are mounted from test/config-next/ directory
+---
+# Additional ConfigMap for config-next specific overrides
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boulder-config-next-overrides
+  namespace: boulder-test
+  labels:
+    app: boulder
+    config: next
+data:
+  # Environment variable overrides for config-next
+  BOULDER_CONFIG_DIR: "test/config-next"
+  USE_CONFIG_NEXT: "true"

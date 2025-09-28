@@ -1,0 +1,224 @@
+---
+# Boulder Test Job - Ephemeral test execution using Kubernetes Jobs
+# This Job runs Boulder tests in an isolated environment with fresh certificate generation
+#
+# Usage:
+#   kubectl apply -f k8s/test/boulder-test-job.yaml
+#   kubectl wait --for=condition=complete job/boulder-test-<timestamp> -n boulder-test --timeout=30m
+#   kubectl logs job/boulder-test-<timestamp> -n boulder-test
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: boulder-test-
+  namespace: boulder-test
+  labels:
+    app: boulder-test-runner
+    app.kubernetes.io/name: boulder
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: boulder
+spec:
+  # Clean up completed jobs after 30 minutes
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 0  # No retries for test jobs
+  template:
+    metadata:
+      labels:
+        app: boulder-test-runner
+        network: internal
+    spec:
+      serviceAccountName: boulder-service-account
+      restartPolicy: Never
+      hostAliases:
+      # Mimic the extra_hosts configuration from docker-compose
+      - ip: "127.0.0.1"
+        hostnames:
+        - "ca.example.org"
+        - "integration.trust"
+      initContainers:
+      # Generate fresh test certificates (equivalent to docker compose run --rm bsetup)
+      - name: bsetup
+        image: letsencrypt/boulder-tools:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Generating fresh test certificates for this test run..."
+          cd /boulder
+          ./test/certs/generate.sh
+          echo "Certificates generated successfully"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+          readOnly: true
+        - name: boulder-certs
+          mountPath: /boulder/test/certs
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
+        workingDir: /boulder
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      # Wait for all external dependencies to be ready
+      - name: wait-for-dependencies
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for infrastructure services..."
+          # Wait for MySQL
+          until nc -z bmysql 3306; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL is ready"
+
+          # Wait for Redis instances
+          for redis in bredis-1 bredis-2; do
+            until nc -z $redis 6379; do
+              echo "Waiting for $redis..."
+              sleep 2
+            done
+            echo "$redis is ready"
+          done
+
+          # Wait for Consul
+          until nc -z bconsul 8300; do
+            echo "Waiting for Consul..."
+            sleep 2
+          done
+          echo "Consul is ready"
+
+          # Wait for ProxySQL
+          until nc -z bproxysql 6033; do
+            echo "Waiting for ProxySQL..."
+            sleep 2
+          done
+          echo "ProxySQL is ready"
+
+          echo "All infrastructure services are ready"
+      containers:
+      - name: boulder-test
+        image: letsencrypt/boulder-tools:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          cd /boulder
+
+          # Parse test arguments from environment
+          TEST_ARGS=""
+
+          if [ "$TEST_TYPE" = "lints" ]; then
+            TEST_ARGS="--lints"
+          elif [ "$TEST_TYPE" = "unit" ]; then
+            TEST_ARGS="--unit"
+            if [ -n "$UNIT_PACKAGES" ]; then
+              for pkg in $UNIT_PACKAGES; do
+                TEST_ARGS="$TEST_ARGS --unit-test-package=$pkg"
+              done
+            fi
+            if [ "$RACE_DETECTION" = "true" ]; then
+              TEST_ARGS="$TEST_ARGS -race"
+            fi
+            if [ "$NO_CACHE" = "true" ]; then
+              TEST_ARGS="$TEST_ARGS -count=1"
+            fi
+          elif [ "$TEST_TYPE" = "integration" ]; then
+            TEST_ARGS="--integration"
+          elif [ "$TEST_TYPE" = "generate" ]; then
+            TEST_ARGS="--generate"
+          elif [ "$TEST_TYPE" = "start" ]; then
+            TEST_ARGS="--start-py"
+          fi
+
+          if [ -n "$FILTER" ]; then
+            TEST_ARGS="$TEST_ARGS -f '$FILTER'"
+          fi
+
+          if [ "$COVERAGE" = "true" ]; then
+            TEST_ARGS="$TEST_ARGS -c"
+            if [ -n "$COVERAGE_DIR" ]; then
+              TEST_ARGS="$TEST_ARGS -d $COVERAGE_DIR"
+            fi
+          fi
+
+          if [ "$VERBOSE" = "true" ]; then
+            TEST_ARGS="$TEST_ARGS -v"
+          fi
+
+          echo "Running: ./test.sh $TEST_ARGS"
+          eval "./test.sh $TEST_ARGS"
+        env:
+        - name: BOULDER_CONFIG_DIR
+          value: "test/config"  # Override with test/config-next for tnk8s.sh
+        - name: TEST_TYPE
+          value: "all"  # Set by tk8s.sh based on options
+        - name: VERBOSE
+          value: "false"
+        - name: RACE_DETECTION
+          value: "false"
+        - name: NO_CACHE
+          value: "false"
+        - name: COVERAGE
+          value: "false"
+        - name: COVERAGE_DIR
+          value: ""
+        - name: FILTER
+          value: ""
+        - name: UNIT_PACKAGES
+          value: ""
+        # Standard Boulder environment variables
+        - name: GOFLAGS
+          value: "-mod=vendor"
+        - name: PYTHONIOENCODING
+          value: "utf-8"
+        - name: PYTHONPATH
+          value: "/boulder/test/integration"
+        volumeMounts:
+        - name: boulder-src
+          mountPath: /boulder
+          readOnly: true
+        - name: boulder-certs
+          mountPath: /boulder/test/certs
+        - name: boulder-config
+          mountPath: /boulder/test/config
+          readOnly: true
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
+        - name: gocache
+          mountPath: /go/pkg/mod/cache
+        - name: test-output
+          mountPath: /boulder/test/coverage
+        workingDir: /boulder
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      volumes:
+      - name: boulder-src
+        configMap:
+          name: boulder-source
+          defaultMode: 0755
+      - name: boulder-certs
+        emptyDir: {}
+      - name: boulder-config
+        configMap:
+          name: boulder-config
+      - name: softhsm-tokens
+        emptyDir: {}
+      - name: gocache
+        persistentVolumeClaim:
+          claimName: boulder-gocache
+      - name: test-output
+        emptyDir: {}

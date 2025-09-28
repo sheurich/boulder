@@ -1,0 +1,38 @@
+---
+# PersistentVolumeClaims for Boulder test caches
+# These provide persistent storage for Go module cache and SoftHSM tokens
+#
+# Usage:
+#   kubectl apply -f k8s/test/persistent-volumes.yaml
+#
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: boulder-gocache
+  namespace: boulder-test
+  labels:
+    app: boulder
+    component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: boulder-softhsm-tokens
+  namespace: boulder-test
+  labels:
+    app: boulder
+    component: hsm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
