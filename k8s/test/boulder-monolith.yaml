@@ -24,6 +24,7 @@ spec:
       containers:
       - name: boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["python3", "./test/startservers.py"]
         ports:
         # WFE2 - ACMEv2 API
@@ -134,7 +135,7 @@ spec:
         - name: GORACE
           value: "halt_on_error=1"
         volumeMounts:
-        - name: boulder-src
+        - name: boulder-source
           mountPath: /boulder
         - name: gocache
           mountPath: /boulder/.gocache
@@ -163,41 +164,8 @@ spec:
             cpu: 2000m
             memory: 4Gi
       volumes:
-      - name: boulder-src
-        emptyDir: {}
       - name: gocache
         emptyDir: {}
-      initContainers:
-      - name: setup-boulder
-        image: letsencrypt/boulder-tools:latest
-        command: ["sh", "-c"]
-        args:
-        - |
-          set -e
-          echo "Setting up Boulder source..."
-          cd /boulder-setup
-          cp -r . /boulder/
-          cd /boulder
-
-          echo "Building Boulder binaries..."
-          make GO_BUILD_FLAGS=
-
-          echo "Setup complete"
-        volumeMounts:
-        - name: boulder-src
-          mountPath: /boulder
-        - name: boulder-source
-          mountPath: /boulder-setup
-        - name: gocache
-          mountPath: /boulder/.gocache
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 2Gi
-          limits:
-            cpu: 2000m
-            memory: 4Gi
-      volumes:
       - name: boulder-source
         hostPath:
           path: ${BOULDER_REPO_PATH}  # Boulder repository root (will be substituted by k8s-up.sh)

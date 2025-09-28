@@ -12,7 +12,7 @@ spec:
       labels:
         app: boulder-database-init
         component: database-setup
-        network: internal
+        network-segment: internal
     spec:
       restartPolicy: Never
       # Init containers to wait for dependencies
@@ -213,6 +213,8 @@ spec:
           mountPath: /tmp/go-cache
         - name: go-path
           mountPath: /tmp/go
+        - name: boulder-source
+          mountPath: /boulder
         resources:
           requests:
             memory: "512Mi"
@@ -227,5 +229,8 @@ spec:
       - name: go-path
         emptyDir:
           sizeLimit: 1Gi
+      - name: boulder-source
+        hostPath:
+          path: ${BOULDER_REPO_PATH}
   backoffLimit: 2
   activeDeadlineSeconds: 1800  # 30 minutes timeout
