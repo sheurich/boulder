@@ -184,19 +184,34 @@ Currently: All services in single namespace with network policies.
 ### Phase 1: Drop-in CI Parity ⚠️ IN PROGRESS
 **Goal**: Run existing Boulder CI unchanged on Kubernetes
 
-**Completed**:
-- ✅ Persistent Boulder monolith deployment
-- ✅ kubectl exec test pattern
-- ✅ All infrastructure services
-- ✅ Database initialization Job
-- ✅ Cluster management scripts
-- ✅ ConfigMap-based configuration
+**Phase 1 Deliverables Checklist** (all paths relative to k8s/ directory):
+- [ ] `cluster/kind-config.yaml` - kind cluster definition with pinned K8s version
+- [ ] `manifests/` - External dependencies as K8s objects:
+  - [ ] MariaDB StatefulSet with PVC
+  - [ ] Redis (×2) StatefulSets
+  - [ ] Consul StatefulSet
+  - [ ] ProxySQL Deployment
+  - [ ] PKIMetal, Jaeger, Challenge Test Server, CT Log Server, etc.
+- [ ] `test/` - Boulder deployment and test infrastructure:
+  - [ ] `boulder-monolith.yaml` - Boulder Pod running `startservers.py`
+  - [ ] `database-init-job.yaml` - Database initialization
+  - [ ] `configmaps.yaml` - Boulder configuration
+  - [ ] Test server deployments
+- [ ] `scripts/`:
+  - [ ] `k8s-up.sh` - Create kind cluster and apply manifests
+  - [ ] `k8s-down.sh` - Destroy cluster
+- [ ] `../tk8s.sh` - Wrapper for `test.sh` using kubectl exec (mirrors ../t.sh)
+- [ ] `../tnk8s.sh` - Wrapper for `test.sh` with config-next (mirrors ../tn.sh)
 
-**Remaining**:
-- ⚠️ Test server verification
-- ⚠️ Network policy validation
-- ⚠️ Full integration test suite
-- ⚠️ CI/CD pipeline integration
+**Key Requirements**:
+- **Service Naming Parity**: Exact DNS names from Docker Compose (e.g., `bmysql`, `bredis-1`, `bconsul`)
+- **Network Compatibility**: Services accessible on same ports as Compose
+- **Boulder Monolith**: Single Pod with `startservers.py` - NO service splitting in Phase 1
+- **Test Execution**: `tk8s.sh` runs tests via `kubectl exec` into Boulder pod
+- **Configuration**: Mount same configs via ConfigMaps/Secrets (no format changes)
+- **NO production features**: No mesh, HPAs, or advanced K8s features
+- **Preserve ALL behavior**: This is CI parity, not optimization
+- **Use existing images**: Same versions as docker-compose.yml
 
 ### Phase 2: Service Separation (FUTURE)
 - Individual Deployments per Boulder service
@@ -342,6 +357,12 @@ When making significant architectural decisions during the Kubernetes migration,
 - Always specify resource requests/limits (Phase 2+)
 - Use namespaces for isolation
 - Document manifest purpose with annotations
+
+## Important Constraints for Phase 1
+- **NO Boulder service splitting** - Keep as monolithic container
+- **NO production features** - No mesh, HPAs, or advanced K8s features
+- **Preserve ALL behavior** - This is CI parity, not optimization
+- **Use existing images** - Same versions as docker-compose.yml
 
 # important-instruction-reminders
 - Focus on Kubernetes migration tasks, not general Boulder development

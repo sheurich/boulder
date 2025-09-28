@@ -10,12 +10,12 @@ Implement Phase 1 of Boulder's Kubernetes migration as specified in `docs/SPEC.m
 # Check specification
 cat docs/SPEC.md | head -128  # Review Phase 1 requirements
 
-# Inventory k8s/ directory
-tree         # Quick directory structure
-
 # Check git status
 git status
 git log --oneline -5
+
+# Verify cluster state
+kubectl get pods -n boulder
 ```
 
 ### 2. Identify and Fix Issues
@@ -25,44 +25,15 @@ Review completed work for:
 - Non-functional scripts or manifests
 - Deviations from Phase 1 scope (NO service splitting!)
 
-### 3. Continue Implementation
-
-#### Phase 1 Deliverables Checklist: (all paths relative to k8s/ directory)
-- [ ] `cluster/kind-config.yaml` - kind cluster definition with pinned K8s version
-- [ ] `manifests/` - External dependencies as K8s objects:
-  - [ ] MariaDB StatefulSet with PVC
-  - [ ] Redis (×2) Deployments
-  - [ ] Consul Deployment/StatefulSet
-  - [ ] ProxySQL Deployment
-  - [ ] PKIMetal, Challenge Test Server, CT Log Server, etc.
-- [ ] `services/` - Service objects preserving Docker Compose names/ports
-- [ ] `scripts/`:
-  - [ ] `k8s-up.sh` - Create kind cluster and apply manifests
-  - [ ] `k8s-down.sh` - Destroy cluster
-- [ ] `README.md` - One-command usage instructions
-- [ ] `../tk8s.sh` - Wrapper for `test.sh` using kubectl exec (mirrors ../t.sh)
-- [ ] `../tnk8s.sh` - Wrapper for `test.sh` with config-next (mirrors ../tn.sh)
-- [ ] Boulder Pod definition running `startservers.py` (monolithic, NO splitting)
-
-#### Key Requirements:
-- **Service Naming Parity**: Exact DNS names from Docker Compose (e.g., `bmysql`, `bredis-1`, `bconsul`)
-- **Network Compatibility**: Services accessible on same ports as Compose
-- **Boulder Monolith**: Single Pod with `startservers.py` - NO service splitting in Phase 1
-- **Test Execution**: `../tk8s.sh` runs tests via `kubectl exec` into Boulder pod
-- **Configuration**: Mount same configs via ConfigMaps/Secrets (no format changes)
-
-### 4. Test Your Progress
+### 3. Test Your Progress
 ```bash
 # Create cluster and deploy
 ./scripts/k8s-up.sh
 
 # Run tests (from parent directory)
 cd .. && ./tk8s.sh        # Should match t.sh behavior
-                          # Will build/start everything needed
-                          # Starts cluster if not already running
-                          # Does not tear down after tests
 
-# Clean up
+# Clean up when done
 ./scripts/k8s-down.sh
 ```
 
@@ -73,37 +44,20 @@ Phase 1 is complete when:
 3. Services reachable under same names/ports as Compose
 4. tk8s.sh/tnk8s.sh provide drop-in replacement for t.sh/tn.sh
 
-## Important Constraints
-- **NO Boulder service splitting** - Keep as monolithic container
-- **NO production features** - No mesh, HPAs, or advanced K8s features
-- **Preserve ALL behavior** - This is CI parity, not optimization
-- **Use existing images** - Same versions as docker-compose.yml
-
 ## Next Steps
-After fixing any issues found, implement the next missing component from the checklist above. Focus on getting a minimal working deployment before adding completeness.
+After fixing any issues found, implement the next missing component from the Phase 1 checklist (see k8s/CLAUDE.md). Focus on getting a minimal working deployment before adding completeness.
 
 ## Execution Strategy
 
 Use parallel agents to accelerate implementation:
-- **Parallel execution**: Run multiple independent agents simultaneously for tasks like analyzing different services, checking configurations, or validating manifests
-- **Agent selection**:
-  - Use specialized agents (codebase-analyzer, codebase-pattern-finder) for targeted searches and analysis
-  - Use general-purpose agents for complex multi-step tasks requiring diverse tools
-  - Deploy web-search-researcher for Kubernetes best practices and troubleshooting
-- **Example workflow**: When implementing a new service, run agents in parallel to:
-  - Analyze Docker Compose configuration (specialized)
-  - Search for existing Kubernetes patterns in codebase (specialized)
-  - Research Kubernetes equivalents for Docker features (web-search)
-  - Generate and validate manifests (general-purpose)
-
-Maximize throughput by identifying independent tasks and executing them concurrently with appropriate agent types.
+- **Parallel execution**: Run multiple independent agents simultaneously for analysis and validation
+- **Agent selection**: Use specialized agents for targeted searches, general-purpose for complex tasks
+- **Example**: When implementing a new service, analyze Docker Compose config while researching Kubernetes patterns in parallel
 
 ## Version Control
 
 Commit changes at logical checkpoints:
-- After completing each deliverable from the Phase 1 checklist
+- After completing each Phase 1 deliverable
 - When a service or script becomes functional
-- After fixing significant bugs or issues
-- Before starting work on a new component
-
-Use clear, descriptive commit messages that reference the specific Phase 1 component being implemented.
+- After fixing significant bugs
+- Use clear commit messages referencing the specific component
