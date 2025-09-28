@@ -21,6 +21,7 @@ KUBECTL_CMD="kubectl"
 K8S_CONTEXT=""
 VERBOSE="false"
 KIND_CLUSTER_NAME="boulder-k8s"
+PROFILE="test"  # Default to test profile for backward compatibility
 
 # Test configuration
 RACE="false"
@@ -243,14 +244,16 @@ Options:
     -k <CONTEXT>, --kube-context=<CONTEXT> Use specific kubectl context
     -N <NAMESPACE>, --namespace=<NAMESPACE> Use specific Kubernetes namespace (default: boulder)
     --cluster-name=<NAME>                 Kind cluster name (default: boulder-k8s)
+    --profile=<PROFILE>                   Configuration profile: test|staging|dev (default: test)
     -h, --help                            Show this help message
 
 Examples:
-    $(basename "${0}")                    # Run all tests
+    $(basename "${0}")                    # Run all tests (test profile)
     $(basename "${0}") --unit             # Run unit tests only
     $(basename "${0}") --integration      # Run integration tests only
     $(basename "${0}") --lints            # Run lints only
     $(basename "${0}") -p ./va --unit     # Run unit tests for VA package only
+    $(basename "${0}") --profile staging  # Run tests in staging profile
 
 Requirements:
     - kubectl configured and connected to a kind cluster
@@ -289,6 +292,7 @@ while getopts luvwecinhd:p:f:k:N:-: OPT; do
     k | kube-context )               check_arg; K8S_CONTEXT="${OPTARG}" ;;
     N | namespace )                  check_arg; K8S_NAMESPACE="${OPTARG}" ;;
     cluster-name )                   check_arg; KIND_CLUSTER_NAME="${OPTARG}" ;;
+    profile )                        check_arg; PROFILE="${OPTARG}" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;
     ? )                              exit 2 ;;
@@ -299,6 +303,11 @@ shift $((OPTIND-1))
 # Set kubectl context if specified
 if [ -n "$K8S_CONTEXT" ]; then
   KUBECTL_CMD="kubectl --context=$K8S_CONTEXT"
+fi
+
+# Adjust namespace based on profile if not explicitly set
+if [ "$PROFILE" = "staging" ] && [ "$K8S_NAMESPACE" = "boulder" ]; then
+  K8S_NAMESPACE="boulder-staging"
 fi
 
 # The list of segments to run. Order doesn't matter.
@@ -321,6 +330,7 @@ print_heading "Boulder Kubernetes Test Suite"
 print_heading "Configuration:"
 
 echo "    RUN:                ${RUN[*]}"
+echo "    PROFILE:            $PROFILE"
 echo "    NAMESPACE:          $K8S_NAMESPACE"
 echo "    BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR"
 echo "    BOULDER_IMAGE:      $BOULDER_IMAGE"

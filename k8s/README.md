@@ -26,6 +26,48 @@ k8s/
 └── kustomization.yaml   # Kustomize configuration
 ```
 
+## Configuration Profiles
+
+Boulder Kubernetes supports multiple configuration profiles via Kustomize overlays:
+
+### Available Profiles
+
+| Profile | Purpose | Namespace | Use Case |
+|---------|---------|-----------|----------|
+| **test** | CI parity with Docker Compose | boulder | Integration testing, CI/CD |
+| **staging** | Progressive migration (Phases 2-6) | boulder-staging | Feature development |
+| **dev** | Simplified local development | boulder | Local testing |
+| **base** | Production configuration | boulder | Production deployment |
+
+### Profile Usage
+
+```bash
+# Deploy test profile (Phase 1 CI parity)
+kubectl apply -k k8s/overlays/test/
+
+# Deploy staging profile (Phases 2-6 development)
+kubectl apply -k k8s/overlays/staging/
+
+# Deploy development profile (simplified)
+kubectl apply -k k8s/overlays/dev/
+
+# Deploy base/production
+kubectl apply -k k8s/
+```
+
+### Test Execution with Profiles
+
+Once profile support is added to test scripts:
+```bash
+./tk8s.sh --profile test      # Run tests in test profile
+./tk8s.sh --profile staging   # Run tests in staging profile
+```
+
+For detailed profile information, see:
+- Test: `k8s/overlays/test/README.md`
+- Staging: `k8s/overlays/staging/README.md`
+- Dev: `k8s/overlays/dev/README.md`
+
 ## Prerequisites
 
 1. Kubernetes cluster (1.24+)

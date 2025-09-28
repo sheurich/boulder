@@ -114,6 +114,51 @@ Milestones (Checklist)
 	•	CI job for K8s path; optional parallel parity job.
 	•	Green CI parity on a representative PR set.
 
+## Profile Management Strategy
+
+To support parallel development of test stability and staging evolution, the implementation uses Kustomize overlays to maintain separate Kubernetes profiles:
+
+### Test Profile (Phase 1)
+- **Purpose**: Exact replication of Docker Compose behavior for CI parity
+- **Location**: `k8s/overlays/test/`
+- **Characteristics**:
+  - Boulder runs as monolithic container with startservers.py
+  - External services configured identically to Docker Compose
+  - Uses test/config directory configurations
+  - Network aliases match Docker Compose service names
+  - No service splitting or K8s-native features
+- **Stability**: Frozen once Phase 1 complete; changes only for bug fixes
+
+### Staging Profile (Phases 2-6)
+- **Purpose**: Progressive implementation of cloud-native features
+- **Location**: `k8s/overlays/staging/`
+- **Evolution Path**:
+  - Phase 2: Service splitting into groups
+  - Phase 3: K8s-native initialization (Jobs/InitContainers)
+  - Phase 4: ConfigMaps and Secrets management
+  - Phase 5: Observability (Prometheus/Jaeger)
+  - Phase 6: Production features (HPAs, mesh, multi-region)
+- **Namespace**: boulder-staging for isolation
+
+### Development Profile (Existing)
+- **Purpose**: Simplified local development
+- **Location**: `k8s/overlays/dev/`
+- **Features**: No TLS, local images, fast iteration
+
+### Profile Selection
+```bash
+# Test environment (CI parity)
+kubectl apply -k k8s/overlays/test/
+
+# Staging environment (feature development)
+kubectl apply -k k8s/overlays/staging/
+
+# Development (local testing)
+kubectl apply -k k8s/overlays/dev/
+```
+
+See ADR-002-MULTI-PROFILE-STRATEGY.md for detailed rationale.
+
 3. **Phase 2: Split Boulder Services with Service Grouping**
 
    - Instead of splitting all services at once, use a phased approach:

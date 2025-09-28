@@ -1,0 +1,104 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: boulder-staging
+
+resources:
+  # Namespace (needs to be created for staging)
+  # - namespace.yaml  # Will be created when needed
+
+  # Start with base resources similar to test
+  # Will be progressively modified through Phases 2-6
+  - ../../boulder-monolith-deployment.yaml
+
+  # Infrastructure services
+  - ../../manifests/mariadb/statefulset.yaml
+  - ../../manifests/mariadb/service.yaml
+  - ../../manifests/proxysql/deployment.yaml
+  - ../../manifests/proxysql/service.yaml
+  - ../../manifests/redis/redis-1-statefulset.yaml
+  - ../../manifests/redis/redis-2-statefulset.yaml
+  - ../../manifests/redis/services.yaml
+  - ../../manifests/consul/statefulset.yaml
+  - ../../manifests/consul/service.yaml
+  - ../../manifests/consul/configmap.yaml
+  - ../../manifests/jaeger/deployment.yaml
+  - ../../manifests/jaeger/service.yaml
+  - ../../manifests/pkimetal/deployment.yaml
+  - ../../manifests/pkimetal/service.yaml
+
+  # Test infrastructure (initially same as test)
+  - ../../test/configmaps.yaml
+  - ../../test/test-servers.yaml
+  - ../../test/network-policies.yaml
+  # Note: Excluding test/services.yaml to avoid conflicts with manifests/*/service.yaml
+
+# Phase 2: Service splitting patches will go here
+# patchesStrategicMerge:
+#   - phase2-ra-deployment.yaml
+#   - phase2-sa-deployment.yaml
+#   - phase2-ca-deployment.yaml
+#   - phase2-va-deployment.yaml
+#   - phase2-wfe-deployment.yaml
+#   - phase2-publisher-deployment.yaml
+#   - phase2-nonce-services.yaml
+#   - phase2-remote-vas.yaml
+
+# Phase 3: Kubernetes-native initialization
+# resources:
+#   - phase3-database-init-job.yaml
+#   - phase3-certificate-init-job.yaml
+# Use InitContainers for per-pod initialization
+
+# Phase 4: ConfigMaps and Secrets management
+# configMapGenerator:
+#   - name: boulder-ra-config
+#     files:
+#       - ra-config.json
+#   - name: boulder-ca-config
+#     files:
+#       - ca-config.json
+#   - name: boulder-sa-config
+#     files:
+#       - sa-config.json
+#   - name: boulder-va-config
+#     files:
+#       - va-config.json
+#   - name: boulder-wfe-config
+#     files:
+#       - wfe-config.json
+# secretGenerator:
+#   - name: boulder-tls-secrets
+#     files:
+#       - tls.crt
+#       - tls.key
+
+# Phase 5: Observability enhancements
+# resources:
+#   - phase5-prometheus-servicemonitor.yaml
+#   - phase5-jaeger-enhanced.yaml
+#   - phase5-grafana-dashboards.yaml
+# Consider service mesh integration (Istio/Linkerd) for advanced observability
+
+# Phase 6: Production features
+# resources:
+#   - phase6-hpa-ra.yaml
+#   - phase6-hpa-va.yaml
+#   - phase6-hpa-wfe.yaml
+#   - phase6-network-segmentation.yaml
+#   - phase6-pod-disruption-budgets.yaml
+#   - phase6-service-mesh.yaml
+# Multi-region support with topology-aware routing
+
+labels:
+  - pairs:
+      environment: staging
+      app.kubernetes.io/profile: staging
+      app.kubernetes.io/managed-by: kustomize
+
+# Staging-specific configuration
+configMapGenerator:
+  - name: boulder-staging-config
+    literals:
+      - BOULDER_CONFIG_DIR=test/config  # Initially same as test
+      # Will change to /config/staging in Phase 4

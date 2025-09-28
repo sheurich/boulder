@@ -80,3 +80,60 @@ To use the production configuration:
 2. Update secrets in `k8s/secrets/tls-secrets.yaml`
 3. Deploy without the dev overlay: `kubectl apply -k k8s/`
 4. Configure Boulder with actual ACME settings
+
+## Working with Multiple Profiles
+
+The Boulder Kubernetes migration uses Kustomize overlays to support multiple configuration profiles:
+
+### Profile Overview
+
+```
+k8s/
+├── base/                    # Production configuration
+├── overlays/
+│   ├── test/               # Phase 1: Docker Compose parity
+│   ├── staging/            # Phases 2-6: Progressive migration
+│   └── dev/                # Simplified development
+```
+
+### Switching Between Profiles
+
+```bash
+# Deploy test profile (CI testing)
+kubectl apply -k k8s/overlays/test/
+export BOULDER_K8S_PROFILE=test
+
+# Deploy staging profile (feature development)
+kubectl apply -k k8s/overlays/staging/
+export BOULDER_K8S_PROFILE=staging
+
+# Deploy dev profile (local development)
+kubectl apply -k k8s/overlays/dev/
+export BOULDER_K8S_PROFILE=dev
+```
+
+### Profile Characteristics
+
+| Aspect | Test | Staging | Dev |
+|--------|------|---------|-----|
+| **Boulder** | Monolith | Progressive split | Monolith |
+| **Config** | test/config | ConfigMaps | Simplified |
+| **Security** | Full TLS | Full TLS | No TLS |
+| **Namespace** | boulder | boulder-staging | boulder |
+| **Purpose** | CI parity | Feature development | Local dev |
+
+### Development Workflow
+
+1. **Local Development**: Use dev profile for quick iteration
+2. **Feature Development**: Use staging profile for Phases 2-6 work
+3. **CI Validation**: Use test profile to ensure no regressions
+4. **Production Prep**: Use base configuration with proper secrets
+
+### Troubleshooting Profile Issues
+
+| Issue | Solution |
+|-------|----------|
+| Wrong profile deployed | Check namespace: `kubectl get ns` |
+| Services not found | Verify profile: `kubectl get deploy -n <namespace> -l app.kubernetes.io/profile` |
+| Config mismatch | Check ConfigMaps: `kubectl get cm -n <namespace>` |
+| Can't switch profiles | Delete old namespace first: `kubectl delete ns <namespace>` |
