@@ -165,6 +165,80 @@ function get_boulder_pod_name() {
   }
 }
 
+function run_k8s_lints() {
+  local lint_failed=false
+
+  print_heading "Running k8s-specific lints..."
+
+  # Check for yamllint
+  if command -v yamllint >/dev/null 2>&1; then
+    print_heading "Linting YAML files in k8s/ directory..."
+
+    # Find all YAML files in k8s/ directory
+    local yaml_files
+    yaml_files=$(find k8s -type f \( -name "*.yaml" -o -name "*.yml" \) 2>/dev/null)
+
+    if [ -n "$yaml_files" ]; then
+      # Run yamllint on all YAML files
+      if echo "$yaml_files" | xargs yamllint -d relaxed; then
+        print_success "YAML linting passed"
+      else
+        print_error "YAML linting failed"
+        lint_failed=true
+      fi
+    else
+      print_warning "No YAML files found in k8s/ directory"
+    fi
+  else
+    print_warning "yamllint not found - skipping YAML linting (install with: brew install yamllint)"
+  fi
+
+  # Check for shellcheck
+  if command -v shellcheck >/dev/null 2>&1; then
+    print_heading "Linting shell scripts in k8s/ directory..."
+
+    # Find all shell scripts in k8s/ directory (files with .sh extension)
+    local shell_files
+    shell_files=$(find k8s -type f -name "*.sh" 2>/dev/null)
+
+    if [ -n "$shell_files" ]; then
+      # Run shellcheck on all shell scripts
+      if echo "$shell_files" | xargs shellcheck; then
+        print_success "Shell script linting passed"
+      else
+        print_error "Shell script linting failed"
+        lint_failed=true
+      fi
+    else
+      print_warning "No shell scripts found in k8s/ directory"
+    fi
+  else
+    print_warning "shellcheck not found - skipping shell script linting (install with: brew install shellcheck)"
+  fi
+
+  # Also lint tk8s.sh and tnk8s.sh themselves
+  if command -v shellcheck >/dev/null 2>&1; then
+    print_heading "Linting tk8s.sh and tnk8s.sh..."
+    local test_scripts=()
+    [ -f "tk8s.sh" ] && test_scripts+=("tk8s.sh")
+    [ -f "tnk8s.sh" ] && test_scripts+=("tnk8s.sh")
+
+    if [ ${#test_scripts[@]} -gt 0 ]; then
+      if shellcheck "${test_scripts[@]}"; then
+        print_success "Test script linting passed"
+      else
+        print_error "Test script linting failed"
+        lint_failed=true
+      fi
+    fi
+  fi
+
+  if [ "$lint_failed" = true ]; then
+    return 1
+  fi
+  return 0
+}
+
 function run_tests_in_boulder_pod() {
   local test_type=$1
   shift
@@ -229,7 +303,7 @@ Runs Boulder test suite inside a persistent Boulder monolith pod using kubectl e
 With no options passed, runs standard battery of tests (lint, unit, and integration).
 
 Options:
-    -l, --lints                           Run lints only
+    -l, --lints                           Run lints only (includes k8s YAML and shell script linting)
     -u, --unit                            Run unit tests only
     -v, --verbose                         Enable verbose output for tests
     -w, --unit-without-cache              Disable go test caching for unit tests
@@ -343,8 +417,21 @@ if [ -n "${FILTER[@]+x}" ]; then
   echo "    FILTER:             ${FILTER[*]}"
 fi
 
-# Check dependencies and ensure cluster is ready
+# Check dependencies
 check_dependencies
+
+# Run k8s-specific lints first if lints are requested
+# This doesn't require the cluster to be running
+if [[ " ${RUN[@]} " =~ " lints " ]]; then
+  STAGE="k8s-lints"
+  if ! run_k8s_lints; then
+    STATUS="FAILURE"
+    exit 1
+  fi
+fi
+
+# Always need cluster for any tests that run in the pod
+# (Boulder lints, unit tests, integration tests)
 ensure_cluster_ready
 wait_for_boulder_pod
 
@@ -376,7 +463,7 @@ for test_type in "${RUN[@]}"; do
     test_args+=("-c" "-d" "$COVERAGE_DIR")
   fi
 
-  # Run the test
+  # Run the test in the pod
   if ! run_tests_in_boulder_pod "$test_type" "${test_args[@]}"; then
     test_failed=true
     break
