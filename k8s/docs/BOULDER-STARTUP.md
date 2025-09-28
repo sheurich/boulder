@@ -32,7 +32,8 @@ Based on my analysis, here's exactly what happens when you run this command:
 5. Database initialization (test/create_db.sh):
 
    - Creates 4 databases: boulder_sa_test, boulder_sa_integration, incidents_sa_test, incidents_sa_integration
-   - Runs migrations from /sa/db/ directory
+   - Runs migrations using sql-migrate tool from /sa/db/ directory (or /sa/db-next/ for config-next)
+   - Tracks applied migrations in gorp_migrations table
    - Creates database users with appropriate permissions
 
 6. Python script launches: exec python3 ./start.py
@@ -67,29 +68,38 @@ Tier 1 - No dependencies:
     - Test servers: aia-test-srv (4502), ct-test-srv (4600), s3-test-srv (4501)
     - Nonce services: nonce-service-taro-1 (9301), nonce-service-taro-2 (9501)
 
-Tier 2 - Depend on Tier 1: - Publishers: boulder-publisher-1 (9391), boulder-publisher-2 (9491) - SCT providers: boulder-ra-sct-provider-1 (9594), boulder-ra-sct-provider-2 (9694)
+Tier 2 - Depend on Tier 1:
+    - Publishers: boulder-publisher-1 (9391), boulder-publisher-2 (9491)
+    - SCT providers: boulder-ra-sct-provider-1 (9594), boulder-ra-sct-provider-2 (9694)
 
-Tier 3 - Depend on previous tiers: - Validation: boulder-va-1 (9392), boulder-va-2 (9492) - Certificate Authority: boulder-ca-1 (9393), boulder-ca-2 (9493)
+Tier 3 - Depend on previous tiers:
+    - Validation: boulder-va-1 (9392), boulder-va-2 (9492)
+    - Certificate Authority: boulder-ca-1 (9393), boulder-ca-2 (9493)
 
-Tier 4 - Depend on core services: - Registration Authority: boulder-ra-1 (9394), boulder-ra-2 (9494) - CRL Storer: crl-storer (9309)
+Tier 4 - Depend on core services:
+    - Registration Authority: boulder-ra-1 (9394), boulder-ra-2 (9494)
+    - CRL Storer: crl-storer (9309)
 
-Tier 5 - Application layer: - Web Frontend: boulder-wfe2 (4001) - Self-service Frontend: sfe (4003) - Admin tools: bad-key-revoker (8020)
+Tier 5 - Application layer:
+    - Web Frontend: boulder-wfe2 (4001)
+    - Self-service Frontend: sfe (4003)
+    - Admin tools: bad-key-revoker (8020)
 
 ## Phase 5: Health Checks & Service Discovery
 
 11. Each service undergoes health check:
 
     - gRPC services: ./bin/health-checker -addr service:port -host-override service.boulder
-    - HTTP services: Port availability check
+    - HTTP services: TCP port availability check via waitport()
     - 100-second timeout per service
-    - Failed health checks abort startup
+    - Failed health checks abort startup with error message showing failed service
 
-12. Consul registration:
+12. Service discovery via Consul:
 
-    - Each service registers with Consul DNS
-    - Creates SRV records for load balancing
-    - Example: \_sa.\_tcp.service.consul points to both SA instances
-    - Health checks ensure only ready instances receive traffic
+    - Services are configured to use Consul DNS for service resolution
+    - SRV records enable load balancing across multiple instances
+    - Example: _sa._tcp.service.consul resolves to both SA instances
+    - Service names resolve to appropriate internal IPs via Consul
 
 ## Phase 6: Ready State
 
