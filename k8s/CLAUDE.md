@@ -209,7 +209,7 @@ Currently: All services in single namespace with network policies.
 - `k8s/test/boulder-monolith.yaml` - Main Boulder deployment
 - `k8s/test/database-init-job.yaml` - Database initialization
 - `k8s/cluster/kind-config.yaml` - kind cluster definition
-- `k8s/docs/BOULDER-K8S-SPEC.md` - Complete migration specification
+- `k8s/docs/SPEC.md` - Complete migration specification
 - `k8s/docs/PHASE0-ANALYSIS.md` - Service dependency analysis
 
 ### Test Runners
