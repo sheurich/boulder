@@ -260,6 +260,21 @@ Currently: All services in single namespace with network policies.
    kubectl apply --dry-run=client -f k8s/manifests/
    ```
 
+### Architecture Decision Records (ADRs)
+
+When making significant architectural decisions during the Kubernetes migration, document them using ADRs:
+
+- **Template**: Use `k8s/docs/ADR-template.md` as the starting point
+- **Location**: Store ADRs in `k8s/docs/` with naming pattern `ADR-NNN-title.md`
+- **When to create an ADR**:
+  - Choosing between multiple technical approaches for migration
+  - Making decisions that affect the overall architecture
+  - Selecting tools or frameworks that impact the project
+  - Deviating from the original migration plan
+
+**Existing ADRs**:
+- `ADR-001-repo-structure.md` - Decision to embed k8s/ directory in Boulder repo rather than separate repository
+
 ### Common Issues and Solutions
 
 | Issue | Solution |
