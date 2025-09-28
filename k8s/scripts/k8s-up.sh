@@ -161,10 +161,38 @@ function apply_manifests() {
 
   # Apply manifests in correct order
   local manifests=(
+    # Namespace first
     "k8s/test/namespace.yaml"
+
+    # Configuration
     "k8s/test/configmaps.yaml"
+
+    # Infrastructure services
+    "k8s/manifests/mariadb/statefulset.yaml"
+    "k8s/manifests/mariadb/service.yaml"
+    "k8s/manifests/redis/configmap.yaml"
+    "k8s/manifests/redis/redis-1-statefulset.yaml"
+    "k8s/manifests/redis/redis-2-statefulset.yaml"
+    "k8s/manifests/redis/services.yaml"
+    "k8s/manifests/consul/configmap.yaml"
+    "k8s/manifests/consul/statefulset.yaml"
+    "k8s/manifests/consul/service.yaml"
+    "k8s/manifests/proxysql/configmap.yaml"
+    "k8s/manifests/proxysql/deployment.yaml"
+    "k8s/manifests/proxysql/service.yaml"
+    "k8s/manifests/jaeger/deployment.yaml"
+    "k8s/manifests/jaeger/service.yaml"
+    "k8s/manifests/pkimetal/deployment.yaml"
+    "k8s/manifests/pkimetal/service.yaml"
+
+    # Test servers
+    "k8s/test/test-servers.yaml"
+
+    # Services overlay (if exists)
     "k8s/services/services.yaml"
     "k8s/test/services.yaml"
+
+    # Network policies
     "k8s/test/network-policies.yaml"
   )
 
@@ -183,23 +211,44 @@ function apply_manifests() {
 function wait_for_services() {
   print_heading "Waiting for services to be ready..."
 
-  # Complete list of all infrastructure services
-  local services=("bmysql" "bredis-1" "bredis-2" "bconsul" "bjaeger" "bproxysql" "bpkimetal")
+  # Complete list of all infrastructure services with their types
+  local statefulsets=("bmysql" "bredis-1" "bredis-2" "bconsul")
+  local deployments=("bjaeger" "bproxysql" "bpkimetal")
 
-  # Wait for all deployments to be available
-  for service in "${services[@]}"; do
-    echo "Waiting for deployment $service..."
-    kubectl wait --for=condition=Available deployment/"$service" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT" || {
-      print_warning "Deployment $service not available within timeout, continuing..."
+  # Wait for StatefulSets to be ready
+  for service in "${statefulsets[@]}"; do
+    echo "Waiting for StatefulSet $service..."
+    kubectl wait --for=jsonpath='{.status.readyReplicas}'=1 statefulset/"$service" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT" || {
+      print_warning "StatefulSet $service not ready within timeout, checking pod status..."
+      kubectl get pods -n "$NAMESPACE" -l app="$service"
+    }
+  done
+
+  # Wait for Deployments to be available
+  for service in "${deployments[@]}"; do
+    echo "Waiting for Deployment $service..."
+    kubectl wait --for=condition=available deployment/"$service" -n "$NAMESPACE" --timeout="$WAIT_TIMEOUT" || {
+      print_warning "Deployment $service not available within timeout, checking pod status..."
+      kubectl get pods -n "$NAMESPACE" -l app="$service"
     }
   done
 
   # Wait for all pods to be ready
-  for service in "${services[@]}"; do
-    echo "Waiting for $service pods to be ready..."
-    kubectl wait --for=condition=Ready pods -l app="$service" -n "$NAMESPACE" --timeout=60s || {
-      print_warning "Pod $service not fully ready yet, continuing..."
-    }
+  echo "Waiting for all pods to be ready..."
+  kubectl wait --for=condition=Ready pods --all -n "$NAMESPACE" --timeout=120s || {
+    print_warning "Some pods not fully ready yet, continuing..."
+    kubectl get pods -n "$NAMESPACE"
+  }
+
+  # Check test servers if they exist
+  local test_servers=("challtestsrv" "loadbalancer" "ct-test" "aia-test-srv" "s3-test-srv")
+  for server in "${test_servers[@]}"; do
+    if kubectl get deployment "$server" -n "$NAMESPACE" >/dev/null 2>&1; then
+      echo "Waiting for test server $server..."
+      kubectl wait --for=condition=available deployment/"$server" -n "$NAMESPACE" --timeout=60s || {
+        print_warning "Test server $server not ready, continuing..."
+      }
+    fi
   done
 
   print_success "All infrastructure services are ready"
