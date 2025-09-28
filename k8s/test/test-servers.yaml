@@ -255,12 +255,6 @@ spec:
         - name: ct-config
           mountPath: /config
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
-      - name: ct-config
-        configMap:
-          name: ct-test-srv-config
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -277,6 +271,11 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: ct-config
+        configMap:
+          name: ct-test-srv-config
       - name: boulder-source
         hostPath:
           path: /boulder-src
@@ -359,9 +358,6 @@ spec:
         - name: boulder-src
           mountPath: /boulder
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -378,6 +374,8 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
       - name: boulder-source
         hostPath:
           path: /boulder-src
@@ -431,9 +429,6 @@ spec:
         - name: boulder-src
           mountPath: /boulder
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -450,6 +445,8 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
       - name: boulder-source
         hostPath:
           path: /boulder-src
@@ -523,12 +520,6 @@ spec:
         - name: pardot-config
           mountPath: /config
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
-      - name: pardot-config
-        configMap:
-          name: pardot-test-srv-config
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -545,6 +536,11 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: pardot-config
+        configMap:
+          name: pardot-test-srv-config
       - name: boulder-source
         hostPath:
           path: /boulder-src
@@ -620,12 +616,6 @@ spec:
         - name: zendesk-config
           mountPath: /config
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
-      - name: zendesk-config
-        configMap:
-          name: zendesk-test-srv-config
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -642,6 +632,11 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: zendesk-config
+        configMap:
+          name: zendesk-test-srv-config
       - name: boulder-source
         hostPath:
           path: /boulder-src
