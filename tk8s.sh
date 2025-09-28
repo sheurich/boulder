@@ -389,7 +389,7 @@ function ensure_cluster_ready() {
   if [ -f "k8s/scripts/k8s-up.sh" ]; then
     print_heading "Running k8s-up.sh to ensure cluster is ready..."
     # Pass --config-next flag to k8s-up.sh if we're using config-next
-    local k8s_up_args=("--namespace" "$K8S_NAMESPACE" "--cluster-name" "$KIND_CLUSTER_NAME")
+    local k8s_up_args=("-n" "$K8S_NAMESPACE" "-c" "$KIND_CLUSTER_NAME")
     if [ "$BOULDER_CONFIG_DIR" = "test/config-next" ]; then
       k8s_up_args+=("--config-next")
     fi
