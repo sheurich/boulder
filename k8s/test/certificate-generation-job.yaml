@@ -51,6 +51,13 @@ spec:
             --from-file=ca.crt=test/certs/ipki/minica.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
+          # Create consul-tls-certs secret
+          kubectl create secret generic consul-tls-certs \
+            --namespace=boulder-test \
+            --from-file=tls.crt=test/certs/ipki/consul.boulder/cert.pem \
+            --from-file=tls.key=test/certs/ipki/consul.boulder/key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+
           echo "Certificate secrets created successfully!"
         workingDir: /boulder
         volumeMounts:

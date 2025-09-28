@@ -34,6 +34,7 @@ spec:
       containers:
       - name: chall-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/chall-test-srv"]
         args:
           - "--defaultIPv4=10.244.0.2"  # This should be the pod IP or service IP
@@ -77,6 +78,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |
@@ -235,6 +237,7 @@ spec:
       containers:
       - name: ct-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/ct-test-srv"]
         args:
         - "--config=/config/ct-test-srv.json"
@@ -258,6 +261,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |
@@ -347,6 +351,7 @@ spec:
       containers:
       - name: aia-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/aia-test-srv"]
         args:
         - "--addr=:4502"
@@ -361,6 +366,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |
@@ -419,6 +425,7 @@ spec:
       containers:
       - name: s3-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/s3-test-srv"]
         args:
         - "--listen=:4501"
@@ -432,6 +439,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |
@@ -506,6 +514,7 @@ spec:
       containers:
       - name: pardot-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/pardot-test-srv"]
         args:
         - "--config=/config/pardot-test-srv.json"
@@ -523,6 +532,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |
@@ -604,6 +614,7 @@ spec:
       containers:
       - name: zendesk-test-srv
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["./bin/zendesk-test-srv"]
         args:
         - "--config=/config/zendesk-test-srv.json"
@@ -619,6 +630,7 @@ spec:
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
+        imagePullPolicy: Never
         command: ["sh", "-c"]
         args:
         - |

@@ -167,6 +167,69 @@ function create_namespace() {
   print_success "Namespace ready"
 }
 
+function generate_certificates() {
+  print_heading "Generating TLS certificates..."
+
+  # Return to boulder root directory
+  cd ../../
+
+  # Generate certificates using Boulder's script in Docker container
+  echo "  Running certificate generation script in Docker container..."
+  if [ ! -f "test/certs/generate.sh" ]; then
+    print_error "Certificate generation script not found at test/certs/generate.sh"
+    return 1
+  fi
+
+  # Run certificate generation using the same image and approach as docker-compose
+  docker run --rm \
+    -v "$(pwd):/boulder" \
+    -w /boulder \
+    "$BOULDER_IMAGE" \
+    ./test/certs/generate.sh
+
+  # Check if certificates were generated
+  if [ ! -d "test/certs/ipki" ]; then
+    print_error "Certificate generation failed - no ipki directory found"
+    return 1
+  fi
+
+  echo "  Creating TLS secrets from generated certificates..."
+
+  # Create redis-tls-certs secret
+  kubectl create secret generic redis-tls-certs \
+    --namespace="$NAMESPACE" \
+    --from-file=tls.crt=test/certs/ipki/redis/cert.pem \
+    --from-file=tls.key=test/certs/ipki/redis/key.pem \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # Create boulder-ca-cert secret
+  kubectl create secret generic boulder-ca-cert \
+    --namespace="$NAMESPACE" \
+    --from-file=ca.crt=test/certs/ipki/minica.pem \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # Create consul-tls-certs secret
+  kubectl create secret generic consul-tls-certs \
+    --namespace="$NAMESPACE" \
+    --from-file=tls.crt=test/certs/ipki/consul.boulder/cert.pem \
+    --from-file=tls.key=test/certs/ipki/consul.boulder/key.pem \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # Verify secrets were created
+  echo "  Verifying TLS secrets were created..."
+  for secret in redis-tls-certs boulder-ca-cert consul-tls-certs; do
+    if ! kubectl get secret "$secret" -n "$NAMESPACE" >/dev/null 2>&1; then
+      print_error "Secret $secret was not created"
+      return 1
+    fi
+  done
+
+  # Return to scripts directory
+  cd k8s/scripts/
+
+  print_success "TLS certificates and secrets created successfully"
+}
+
 function apply_manifests() {
   print_heading "Applying Kubernetes manifests..."
 
@@ -442,6 +505,7 @@ check_dependencies
 create_cluster
 load_boulder_image
 create_namespace
+generate_certificates
 apply_manifests
 wait_for_services
 run_database_initialization
