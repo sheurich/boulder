@@ -82,4 +82,28 @@ Phase 1 is complete when:
 ## Next Steps
 After fixing any issues found, implement the next missing component from the checklist above. Focus on getting a minimal working deployment before adding completeness.
 
-ultrathink parallel agents
+## Execution Strategy
+
+Use parallel agents to accelerate implementation:
+- **Parallel execution**: Run multiple independent agents simultaneously for tasks like analyzing different services, checking configurations, or validating manifests
+- **Agent selection**:
+  - Use specialized agents (codebase-analyzer, codebase-pattern-finder) for targeted searches and analysis
+  - Use general-purpose agents for complex multi-step tasks requiring diverse tools
+  - Deploy web-search-researcher for Kubernetes best practices and troubleshooting
+- **Example workflow**: When implementing a new service, run agents in parallel to:
+  - Analyze Docker Compose configuration (specialized)
+  - Search for existing Kubernetes patterns in codebase (specialized)
+  - Research Kubernetes equivalents for Docker features (web-search)
+  - Generate and validate manifests (general-purpose)
+
+Maximize throughput by identifying independent tasks and executing them concurrently with appropriate agent types.
+
+## Version Control
+
+Commit changes at logical checkpoints:
+- After completing each deliverable from the Phase 1 checklist
+- When a service or script becomes functional
+- After fixing significant bugs or issues
+- Before starting work on a new component
+
+Use clear, descriptive commit messages that reference the specific Phase 1 component being implemented.
