@@ -25,7 +25,7 @@ spec:
       - name: boulder
         image: letsencrypt/boulder-tools:latest
         imagePullPolicy: Never
-        command: ["python3", "-u", "/boulder/start.py"]
+        command: ["python3", "-u", "/boulder/test/startservers.py"]
         ports:
         # WFE2 - ACMEv2 API
         - containerPort: 4001
@@ -127,7 +127,7 @@ spec:
           name: crl-debug
         env:
         - name: FAKE_DNS
-          value: "10.244.0.2"  # This should be set to the chall-test-srv service IP
+          value: "64.112.117.122"  # Docker Compose public network IP for challenge routing
         - name: BOULDER_CONFIG_DIR
           value: "test/config"
         - name: GOCACHE
@@ -173,7 +173,7 @@ spec:
       dnsPolicy: "None"
       dnsConfig:
         nameservers:
-        - "10.244.0.28"  # consul pod IP for .consul domains
+        - "10.77.77.10"  # Consul static IP for service discovery (will be overridden dynamically)
         - "10.96.0.10"   # kube-dns for kubernetes services
         searches:
         - "service.consul"
@@ -184,7 +184,7 @@ spec:
           value: "5"
       hostAliases:
       # These mimic the extra_hosts configuration from docker-compose
-      - ip: "10.244.0.2"  # Boulder monolith pod IP (will be updated by k8s)
+      - ip: "127.0.0.1"  # Localhost for test environment
         hostnames:
         - "ca.example.org"
         - "integration.trust"

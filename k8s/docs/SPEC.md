@@ -67,31 +67,143 @@ To keep the test harness untouched:
 	•	run the tests inside the Boulder pod (preferred), or
 	•	use kind extraPortMappings or hostPort for those specific cases (documented in kind-config.yaml).
 
+Network Configuration and DNS
+	•	Three distinct network ranges matching Docker Compose:
+	  •	bouldernet (10.77.77.0/24): Internal services network
+	  •	publicnet (64.112.117.0/24): HTTP-01 challenge network (FAKE_DNS=64.112.117.122)
+	  •	publicnet2 (64.112.117.0/24): TLS-ALPN-01 challenge network (64.112.117.134)
+	•	Static IP assignments for critical services:
+	  •	Consul: 10.77.77.10 (primary DNS)
+	  •	Redis-1: 10.77.77.4, Redis-2: 10.77.77.5
+	  •	Boulder: 10.77.77.77 (internal network)
+	•	DNS configuration:
+	  •	Primary: Consul at 10.77.77.10 for service discovery
+	  •	Backup: 8.8.8.8 for external resolution
+	  •	Service resolution via Consul SRV records (e.g., _sa._tcp.service.consul)
+
 Images, Config, and Secrets
-	•	Use the exact images as Compose (prefer digest pins).
+	•	Use the exact images as Compose (prefer digest pins):
+	  •	letsencrypt/boulder-tools for test utilities
+	  •	MariaDB 10.11.13 for database
+	  •	Redis, Consul, ProxySQL, Jaeger with specific versions
 	•	Mount the same config files and test fixtures (ConfigMaps/Secrets only as a transport; no format changes).
-	•	Secrets in Phase 1 are test-only materials already present in the repo (e.g., /test/certs/ipki/), mounted as Kubernetes Secrets.
-	•	Environment parity: propagate the same env vars the scripts expect; avoid renaming.
+	•	Secrets in Phase 1 are test-only materials already present in the repo:
+	  •	Internal PKI certificates from /test/certs/ipki/ for mTLS
+	  •	PKCS#11 test tokens for HSM simulation
+	  •	Service-specific certificates for all Boulder components
+	•	Environment variables required:
+	  •	FAKE_DNS=64.112.117.122 for challenge routing
+	  •	BOULDER_CONFIG_DIR=test/config (or test/config-next)
+	  •	GOCACHE=/boulder/.gocache/go-build (separate for config-next)
+	  •	MYSQL_CONTAINER=1 for database initialization
+	•	Configuration management:
+	  •	Standard config: test/config/*.json
+	  •	Config-next: test/config-next/*.json
+	  •	Migration configs: sa/db/dbconfig.yml (or sa/db-next/dbconfig.yml)
 
 External Dependencies (K8s-managed; Boulder stays monolith)
-	•	MariaDB: StatefulSet + PVC; same schema/init path as Compose.
-	•	Redis (×2): Deployments (PVC only if Compose used persistence).
-	•	Consul, ProxySQL: Deployments/StatefulSets mirroring Compose configs.
-	•	Any test servers (CT log, AIA, S3 mock, challenge server, etc.) that the current CI actually uses are included. (If not used in Phase 1 CI, defer to later phases.)
 
-Note: Keep initialization minimal—only what Compose already does. If Compose runs inline scripts, run the same scripts via a Job/InitContainer, not a re-imagined flow.
+Core Infrastructure Services:
+	•	MariaDB (bmysql): StatefulSet + PVC; same schema/init path as Compose.
+	•	Redis (×2): StatefulSets at fixed IPs (bredis-1: 10.77.77.4, bredis-2: 10.77.77.5)
+	•	Consul (bconsul): StatefulSet at 10.77.77.10 for service discovery
+	•	ProxySQL (bproxysql): Deployment for connection pooling (ports 6032-6033)
+	•	Jaeger (bjaeger): Deployment for distributed tracing
+	•	PKIMetal (bpkimetal): Deployment for certificate validation (port 8080)
+
+Test and Support Services (all required for CI):
+	•	Challenge Test Server (chall-test-srv):
+	  •	HTTP-01 on 64.112.117.122:80
+	  •	HTTPS on 64.112.117.122:443
+	  •	TLS-ALPN-01 on 64.112.117.134:443
+	  •	DNS on ports 8053, 8054
+	  •	Management API on :8055
+	•	Remote Validation Authorities (multi-perspective validation):
+	  •	remoteva-a (port 9397)
+	  •	remoteva-b (port 9498)
+	  •	remoteva-c (port 9499)
+	•	Test Infrastructure Servers:
+	  •	aia-test-srv (port 4502): Authority Information Access
+	  •	ct-test-srv (port 4600): Certificate Transparency log
+	  •	s3-test-srv (port 4501): S3 mock for CRL storage
+	  •	pardot-test-srv: Marketing integration mock
+	•	Nonce Services (for replay protection):
+	  •	nonce-service-taro-1 (port 9301)
+	  •	nonce-service-taro-2 (port 9501)
+	•	Publisher Services (CT log submission):
+	  •	boulder-publisher-1 (port 9391)
+	  •	boulder-publisher-2 (port 9491)
+	•	SCT Provider Services (SCT generation):
+	  •	boulder-ra-sct-provider-1 (port 9594)
+	  •	boulder-ra-sct-provider-2 (port 9694)
+
+Database Initialization Requirements:
+	•	MariaDB configuration:
+	  •	Set binlog_format='MIXED' for replication compatibility
+	  •	max_connections=500 for service scaling
+	•	Database creation (4 databases required):
+	  •	boulder_sa_test: Storage Authority test database
+	  •	boulder_sa_integration: Storage Authority integration database
+	  •	incidents_sa_test: Incident tracking test database
+	  •	incidents_sa_integration: Incident tracking integration database
+	•	Migration process:
+	  •	Use sql-migrate tool with temporal ordering (YYYYMMDDHHMMSS format)
+	  •	Standard config: Apply migrations from /sa/db/ directory
+	  •	Config-next: Apply migrations from /sa/db-next/ directory
+	  •	Track applied migrations in gorp_migrations table
+	•	Database user creation with role-based permissions:
+	  •	test_setup: Full privileges for test management
+	  •	sa: Storage Authority read/write access
+	  •	sa_ro: Storage Authority read-only access
+	  •	Specialized users: revoker, mailer, cert_checker
+
+Note: Use a Kubernetes Job for database initialization (database-init-job.yaml) that runs the same test/create_db.sh script as Compose, ensuring identical behavior.
 
 Orchestration & Startup
 	•	Keep Boulder as one container launched exactly as today with startservers.py and test.sh.
-	•	External deps get basic readiness probes approximating Compose’s “up” condition (e.g., TCP health or simple gRPC health where available). No aggressive timeouts yet.
-	•	No change to Boulder’s startup ordering logic—Kubernetes just guarantees deps are reachable; startservers.py remains the source of truth.
+	•	5-Tier dependency model for service startup:
+	  •	Tier 0: Infrastructure (MySQL, Redis, Consul, ProxySQL, Jaeger, PKIMetal)
+	  •	Tier 1: No-dependency services (Remote VAs, Storage, Test servers, Nonce services)
+	  •	Tier 2: Publishers and SCT providers (depend on Tier 1)
+	  •	Tier 3: Validation and Certificate Authorities (depend on Tiers 1-2)
+	  •	Tier 4: Registration Authority and CRL Storer (depend on core services)
+	  •	Tier 5: Application layer (WFE2, SFE, admin tools)
+	•	Health check requirements:
+	  •	gRPC services: Use health-checker binary with -addr and -host-override flags
+	  •	HTTP services: TCP port availability check
+	  •	100-second timeout per service (matching Docker Compose behavior)
+	  •	Dependency checks with 40-second timeout: MySQL (3306), ProxySQL (6032), PKIMetal (8080)
+	•	Service discovery validation:
+	  •	Verify publisher.service.consul resolves via Consul DNS before starting services
+	  •	SRV records must resolve for load balancing across instances
+	•	No change to Boulder's startup ordering logic—Kubernetes just guarantees deps are reachable; startservers.py remains the source of truth.
 
 Test Execution Path
+	•	Certificate generation phase:
+	  •	Run bsetup Job/InitContainer to generate test certificates
+	  •	Use letsencrypt/boulder-tools image with test/certs/generate.sh
+	  •	Generate with minica tool:
+	    - Internal PKI certificates for service-to-service mTLS
+	    - Challenge test certificates for integration tests
+	    - PKCS#11 test tokens for HSM simulation
+	    - Service-specific certificates for all Boulder components
+	•	Multi-phase test execution:
+	  •	Phase 1: Linting (golangci-lint, typos, config formatting, Grafana validation)
+	  •	Phase 2: Unit tests with -p=1 flag (serial execution to prevent DB conflicts)
+	  •	Phase 3: Integration tests (Python v2_integration + Go integration tests)
+	  •	Phase 4: Load balance verification (check grpc_server_handled_total metrics)
 	•	`tk8s.sh` creates the cluster (if needed), applies manifests, waits for readiness, then:
-      •	`kubectl exec <boulder-pod> -- /path/to/test.sh` (or equivalent).
-   •  This mirrors the existing `t.sh` → `test.sh` path.
-      This preserves the test process environment and filesystem expectations.
-	•	Log/Artifact collection: kubectl logs and kubectl cp helpers matching Compose’s log bundle output layout.
+      •	`kubectl exec <boulder-pod> -- /path/to/test.sh "$@"` (pass all arguments)
+      •	This mirrors the existing `t.sh` → `test.sh` path
+      •	Preserves the test process environment and filesystem expectations
+	•	Coverage collection (if enabled):
+	  •	Unit tests: Generate unit.coverprofile with -covermode=atomic
+	  •	Integration tests: Use go tool covdata for binary coverage data
+	  •	Combine coverage from all service instances into final report
+	•	Redis flushing between test phases:
+	  •	Use flushredis utility before unit and integration tests
+	  •	Connect to Redis ring and call FlushAll() on each shard
+	•	Log/Artifact collection: kubectl logs and kubectl cp helpers matching Compose's log bundle output layout.
 
 Parity Checker
 	•	GitHub Actions can run both Compose and K8s jobs on the same PR/commit in parallel.

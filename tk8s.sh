@@ -15,7 +15,7 @@ fi
 #
 # Defaults and Global Variables
 #
-K8S_NAMESPACE="boulder"
+K8S_NAMESPACE="boulder-test"
 BOULDER_IMAGE="letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}"
 KUBECTL_CMD="kubectl"
 K8S_CONTEXT=""
@@ -163,6 +163,56 @@ function get_boulder_pod_name() {
   $KUBECTL_CMD get pods -l app=boulder-monolith -n "$K8S_NAMESPACE" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || {
     exit_msg "Could not find Boulder monolith pod"
   }
+}
+
+function verify_certificates() {
+  print_heading "Verifying test certificates..."
+
+  local pod_name
+  pod_name=$(get_boulder_pod_name)
+
+  # Check if certificates exist in the Boulder pod
+  if $KUBECTL_CMD exec "$pod_name" -n "$K8S_NAMESPACE" -- test -d "/boulder/test/certs/ipki" 2>/dev/null; then
+    print_success "Test certificates are present"
+    return 0
+  fi
+
+  print_warning "Test certificates not found in Boulder pod, generating..."
+
+  # Generate certificates using docker (same as t.sh does with docker compose run --rm bsetup)
+  if [ -f "test/certs/generate.sh" ]; then
+    print_heading "Generating certificates using Docker..."
+    docker run --rm \
+      -v "$(pwd):/boulder" \
+      -w /boulder \
+      "$BOULDER_IMAGE" \
+      ./test/certs/generate.sh
+
+    # Copy certificates to the pod
+    print_heading "Copying certificates to Boulder pod..."
+    $KUBECTL_CMD cp test/certs "$pod_name":/boulder/test/ -n "$K8S_NAMESPACE"
+
+    print_success "Certificates generated and copied to Boulder pod"
+  else
+    print_error "Certificate generation script not found at test/certs/generate.sh"
+    return 1
+  fi
+}
+
+function verify_services_ready() {
+  print_heading "Verifying infrastructure services are ready..."
+
+  local services=("bmysql" "bredis-1" "bredis-2" "bconsul" "bproxysql" "bpkimetal" "bjaeger")
+
+  for service in "${services[@]}"; do
+    if ! $KUBECTL_CMD get pods -n "$K8S_NAMESPACE" -l "app=$service" --no-headers 2>/dev/null | grep -q "Running"; then
+      print_warning "Service $service is not running"
+      return 1
+    fi
+  done
+
+  print_success "All infrastructure services are ready"
+  return 0
 }
 
 function run_k8s_lints() {
@@ -316,7 +366,7 @@ Options:
                                           Default: test/coverage/<timestamp>
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
     -k <CONTEXT>, --kube-context=<CONTEXT> Use specific kubectl context
-    -N <NAMESPACE>, --namespace=<NAMESPACE> Use specific Kubernetes namespace (default: boulder)
+    -N <NAMESPACE>, --namespace=<NAMESPACE> Use specific Kubernetes namespace (default: boulder-test)
     --cluster-name=<NAME>                 Kind cluster name (default: boulder-k8s)
     --profile=<PROFILE>                   Configuration profile: test|staging|dev (default: test)
     -h, --help                            Show this help message
@@ -435,6 +485,10 @@ fi
 ensure_cluster_ready
 wait_for_boulder_pod
 
+# Verify test environment is ready
+verify_certificates
+verify_services_ready
+
 # Run tests based on configuration
 test_failed=false
 
@@ -446,9 +500,10 @@ for test_type in "${RUN[@]}"; do
 
   if [ "$test_type" == "unit" ]; then
     test_args+=("${UNIT_FLAGS[@]}")
-    if [ -n "${UNIT_PACKAGES[@]+x}" ]; then
+    # Add unit package arguments if specified
+    if [ ${#UNIT_PACKAGES[@]} -gt 0 ]; then
       for pkg in "${UNIT_PACKAGES[@]}"; do
-        test_args+=("-p" "$pkg")
+        test_args+=("--unit-test-package=$pkg")
       done
     fi
   elif [ "$test_type" == "integration" ]; then
