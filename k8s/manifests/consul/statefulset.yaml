@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/name: consul
     app.kubernetes.io/component: service-discovery
     app.kubernetes.io/part-of: boulder
+    network-segment: internal
+    app-type: infrastructure
 spec:
   serviceName: bconsul
   replicas: 1
@@ -19,6 +21,8 @@ spec:
       labels:
         app: bconsul
         network: internal
+        network-segment: internal
+        app-type: infrastructure
     spec:
       containers:
       - name: consul

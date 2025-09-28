@@ -8,6 +8,9 @@ metadata:
     app.kubernetes.io/name: jaeger
     app.kubernetes.io/component: tracing
     app.kubernetes.io/part-of: boulder
+    network-segment: internal
+    app-type: infrastructure
+    external-access: "true"
 spec:
   replicas: 1
   selector:
@@ -18,6 +21,9 @@ spec:
       labels:
         app: bjaeger
         network: internal
+        network-segment: internal
+        app-type: infrastructure
+        external-access: "true"
     spec:
       containers:
       - name: jaeger

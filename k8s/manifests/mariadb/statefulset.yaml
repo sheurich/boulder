@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/name: mariadb
     app.kubernetes.io/component: database
     app.kubernetes.io/part-of: boulder
+    network-segment: internal
+    app-type: infrastructure
 spec:
   serviceName: bmysql
   replicas: 1
@@ -19,6 +21,8 @@ spec:
       labels:
         app: bmysql
         network: internal
+        network-segment: internal
+        app-type: infrastructure
     spec:
       containers:
       - name: mariadb

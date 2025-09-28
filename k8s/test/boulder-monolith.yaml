@@ -9,7 +9,7 @@ metadata:
   namespace: boulder-test
   labels:
     app: boulder-monolith
-    network-segment: internal
+    network-segment: boulder
 spec:
   replicas: 1
   selector:
@@ -19,7 +19,7 @@ spec:
     metadata:
       labels:
         app: boulder-monolith
-        network-segment: internal
+        network-segment: boulder
     spec:
       containers:
       - name: boulder
@@ -139,6 +139,8 @@ spec:
           mountPath: /boulder
         - name: gocache
           mountPath: /boulder/.gocache
+        - name: softhsm-tokens
+          mountPath: /var/lib/softhsm/tokens
         workingDir: /boulder
         livenessProbe:
           httpGet:
@@ -165,7 +167,11 @@ spec:
             memory: 4Gi
       volumes:
       - name: gocache
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: boulder-gocache
+      - name: softhsm-tokens
+        persistentVolumeClaim:
+          claimName: boulder-softhsm-tokens
       - name: boulder-source
         hostPath:
           path: ${BOULDER_REPO_PATH}  # Boulder repository root (will be substituted by k8s-up.sh)
@@ -196,7 +202,7 @@ metadata:
   namespace: boulder-test
   labels:
     app: boulder-monolith
-    network-segment: internal
+    network-segment: boulder
 spec:
   selector:
     app: boulder-monolith
@@ -256,7 +262,7 @@ metadata:
   namespace: boulder-test
   labels:
     app: boulder-monolith
-    network-segment: internal
+    network-segment: boulder
 spec:
   selector:
     app: boulder-monolith

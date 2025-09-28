@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/instance: redis-2
     app.kubernetes.io/component: rate-limiting
     app.kubernetes.io/part-of: boulder
+    network-segment: internal
+    app-type: infrastructure
 spec:
   serviceName: boulder-redis-2
   replicas: 1
@@ -20,6 +22,8 @@ spec:
       labels:
         app: boulder-redis-2
         network: internal
+        network-segment: internal
+        app-type: infrastructure
     spec:
       containers:
       - name: redis
