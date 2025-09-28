@@ -6,6 +6,8 @@ This directory contains the Kubernetes manifests for Phase 1 of Boulder's migrat
 
 Phase 1 focuses on migrating external dependencies (MariaDB, ProxySQL, Redis, Consul, Jaeger, PKIMetal) to Kubernetes while keeping Boulder services bundled in a single container, maintaining compatibility with the existing architecture.
 
+The decision to embed the Kubernetes configuration within the Boulder repository (rather than maintaining a separate repository) is documented in [ADR-001-repo-structure](docs/ADR-001-repo-structure.md). This approach enables integrated development and simplifies the path to upstream contribution.
+
 ## Directory Structure
 
 ```
