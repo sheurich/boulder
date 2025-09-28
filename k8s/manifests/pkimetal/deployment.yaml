@@ -23,10 +23,10 @@ spec:
       - name: pkimetal
         image: ghcr.io/pkimetal/pkimetal:v1.20.0
         ports:
-        - containerPort: 80
+        - containerPort: 8080
           name: http
-        - containerPort: 443
-          name: https
+        - containerPort: 8081
+          name: metrics
         resources:
           requests:
             memory: "256Mi"
@@ -34,21 +34,5 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "200m"
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
-          successThreshold: 1
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 3
-          successThreshold: 1
-          failureThreshold: 3
+# Health checks disabled for Phase 1 CI parity
+        # TODO: Determine correct health check endpoint

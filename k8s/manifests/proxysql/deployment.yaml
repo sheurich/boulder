@@ -64,19 +64,8 @@ spec:
           timeoutSeconds: 3
           successThreshold: 1
           failureThreshold: 3
-      initContainers:
-      - name: wait-for-mysql
-        image: busybox:1.36
-        command:
-        - sh
-        - -c
-        - |
-          echo "Waiting for MariaDB to be ready..."
-          until nc -z bmysql 3306; do
-            echo "MariaDB not ready yet. Retrying in 2 seconds..."
-            sleep 2
-          done
-          echo "MariaDB is ready!"
+# Init container disabled for Phase 1 - MySQL is already running
+      # TODO: Fix DNS resolution in init containers
       volumes:
       - name: proxysql-config
         configMap:

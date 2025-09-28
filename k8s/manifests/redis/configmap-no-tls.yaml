@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: boulder-test
+  labels:
+    app: redis
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: rate-limiting
+    app.kubernetes.io/part-of: boulder
+data:
+  redis.conf: |
+    port 6379
+    save 60 1
+    maxmemory-policy noeviction
+    loglevel warning
+    # List of renamed commands comes from:
+    # https://www.digitalocean.com/community/tutorials/how-to-secure-your-redis-installation-on-ubuntu-18-04
+    rename-command BGREWRITEAOF ""
+    rename-command BGSAVE ""
+    rename-command CONFIG ""
+    rename-command DEBUG ""
+    rename-command FLUSHDB ""
+    rename-command KEYS ""
+    rename-command PEXPIRE ""
+    rename-command RENAME ""
+    rename-command SAVE ""
+    rename-command SHUTDOWN ""
+    rename-command SPOP ""
+    rename-command SREM ""
