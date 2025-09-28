@@ -74,12 +74,6 @@ spec:
         - name: chall-certs
           mountPath: /certs
         workingDir: /boulder
-      volumes:
-      - name: boulder-src
-        emptyDir: {}
-      - name: chall-certs
-        configMap:
-          name: chall-test-srv-certs
       initContainers:
       - name: setup-boulder
         image: letsencrypt/boulder-tools:latest
@@ -96,6 +90,11 @@ spec:
         - name: boulder-source
           mountPath: /boulder-setup
       volumes:
+      - name: boulder-src
+        emptyDir: {}
+      - name: chall-certs
+        configMap:
+          name: chall-test-srv-certs
       - name: boulder-source
         hostPath:
           path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment

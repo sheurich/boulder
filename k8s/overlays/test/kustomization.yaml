@@ -4,45 +4,20 @@ kind: Kustomization
 namespace: boulder
 
 resources:
-  # Namespace
-  - ../../namespaces/boulder-namespace.yaml
+  # Reference the base kustomization
+  - ../../
 
-  # Boulder monolith deployment from root
-  - ../../boulder-monolith-deployment.yaml
-
-  # Infrastructure services from manifests (excluding Redis - using test version)
-  - ../../manifests/mariadb/statefulset.yaml
-  - ../../manifests/mariadb/service.yaml
-  - ../../manifests/proxysql/deployment.yaml
-  - ../../manifests/proxysql/service.yaml
-  # - ../../manifests/redis/redis-1-statefulset.yaml  # Using test Redis instead
-  # - ../../manifests/redis/redis-2-statefulset.yaml  # Using test Redis instead
-  # - ../../manifests/redis/services.yaml             # Using test Redis instead
-  - ../../manifests/consul/statefulset.yaml
-  - ../../manifests/consul/service.yaml
-  - ../../manifests/consul/configmap.yaml
-  - ../../manifests/jaeger/deployment.yaml
-  - ../../manifests/jaeger/service.yaml
-  - ../../manifests/pkimetal/deployment.yaml
-  - ../../manifests/pkimetal/service.yaml
-
-  # Test infrastructure
-  - ../../test/configmaps.yaml
-  - ../../test/services.yaml
-  - ../../test/test-servers.yaml
-  - ../../test/loadbalancer.yaml
-  - ../../test/network-policies.yaml
-
+# Override labels for test environment
 labels:
 - includeSelectors: true
   pairs:
     environment: test
     app.kubernetes.io/profile: test
-    app.kubernetes.io/managed-by: kustomize
 
-# Use test config directory
+# Test-specific configuration
 configMapGenerator:
-  - name: boulder-config
+  - name: boulder-test-config
     behavior: create
     literals:
       - BOULDER_CONFIG_DIR=test/config
+      - TEST_PROFILE=enabled
