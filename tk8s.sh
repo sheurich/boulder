@@ -20,7 +20,7 @@ BOULDER_IMAGE="letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}"
 KUBECTL_CMD="kubectl"
 K8S_CONTEXT=""
 VERBOSE="false"
-KIND_CLUSTER_NAME="boulder-k8s"
+KIND_CLUSTER_NAME="${KIND_CLUSTER:-boulder-k8s}"
 PROFILE="test"  # Default to test profile for backward compatibility
 
 # Test configuration

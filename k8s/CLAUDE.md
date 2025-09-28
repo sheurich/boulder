@@ -6,6 +6,20 @@ This file provides guidance to Claude Code when working with the Boulder Kuberne
 
 This is the Boulder Certificate Authority Kubernetes migration project, currently implementing **Phase 1: Drop-in CI Parity on Kubernetes**. The goal is to migrate Boulder from Docker Compose to Kubernetes while maintaining exact behavioral compatibility.
 
+## Working with Multiple Worktrees
+
+When working with multiple git worktrees on the same machine, use the `KIND_CLUSTER` environment variable to avoid cluster conflicts:
+
+```bash
+# Set unique cluster name for this worktree
+export KIND_CLUSTER=boulder-k8s-b1  # or boulder-k8s-main, boulder-k8s-feature-xyz, etc.
+
+# All commands will now use this cluster
+./tk8s.sh                           # Uses $KIND_CLUSTER
+./k8s/scripts/k8s-up.sh             # Creates $KIND_CLUSTER
+./k8s/scripts/k8s-down.sh           # Tears down $KIND_CLUSTER
+```
+
 ## Common Kubernetes Development Commands
 
 ### Primary Test Execution (Persistent Boulder Pattern)

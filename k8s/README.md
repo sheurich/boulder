@@ -8,6 +8,31 @@ Phase 1 focuses on migrating external dependencies (MariaDB, ProxySQL, Redis, Co
 
 The decision to embed the Kubernetes configuration within the Boulder repository (rather than maintaining a separate repository) is documented in [ADR-001-repo-structure](docs/ADR-001-repo-structure.md). This approach enables integrated development and simplifies the path to upstream contribution.
 
+## Working with Multiple Worktrees
+
+When working with multiple git worktrees of the Boulder repository, each worktree can run its own kind cluster to avoid conflicts. Use the `KIND_CLUSTER` environment variable to specify a unique cluster name:
+
+```bash
+# For branch b1
+export KIND_CLUSTER=boulder-k8s-b1
+
+# For main branch
+export KIND_CLUSTER=boulder-k8s-main
+
+# For feature branches
+export KIND_CLUSTER=boulder-k8s-feature-xyz
+```
+
+All scripts (`k8s-up.sh`, `k8s-down.sh`, `tk8s.sh`, `tnk8s.sh`) respect this environment variable. If not set, they default to `boulder-k8s`.
+
+### Resource Requirements
+
+Running multiple kind clusters requires sufficient Docker resources. Recommended minimums per cluster:
+- Memory: 8GB
+- CPUs: 4
+
+Adjust Docker Desktop settings accordingly when running multiple clusters simultaneously.
+
 ## Directory Structure
 
 ```

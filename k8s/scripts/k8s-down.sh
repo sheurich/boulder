@@ -15,7 +15,7 @@ fi
 #
 # Defaults and Global Variables
 #
-CLUSTER_NAME="boulder-k8s"
+CLUSTER_NAME="${KIND_CLUSTER:-boulder-k8s}"
 NAMESPACE="boulder-test"
 FORCE="false"
 VERBOSE="false"

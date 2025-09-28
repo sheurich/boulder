@@ -15,7 +15,7 @@ fi
 #
 # Defaults and Global Variables
 #
-CLUSTER_NAME="boulder-k8s"
+CLUSTER_NAME="${KIND_CLUSTER:-boulder-k8s}"
 NAMESPACE="boulder-test"
 BOULDER_IMAGE="letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}"
 KIND_CONFIG_PATH="../cluster/kind-config.yaml"
