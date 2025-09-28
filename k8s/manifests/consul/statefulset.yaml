@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: boulder-consul
+  name: bconsul
   namespace: boulder-test
   labels:
-    app: boulder-consul
+    app: bconsul
     app.kubernetes.io/name: consul
     app.kubernetes.io/component: service-discovery
     app.kubernetes.io/part-of: boulder
 spec:
-  serviceName: boulder-consul
+  serviceName: bconsul
   replicas: 1
   selector:
     matchLabels:
-      app: boulder-consul
+      app: bconsul
   template:
     metadata:
       labels:
-        app: boulder-consul
+        app: bconsul
         network: internal
     spec:
       containers:

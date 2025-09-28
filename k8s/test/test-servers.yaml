@@ -97,7 +97,7 @@ spec:
           name: chall-test-srv-certs
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service
@@ -279,7 +279,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service
@@ -380,7 +380,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service
@@ -452,7 +452,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service
@@ -547,7 +547,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service
@@ -644,7 +644,7 @@ spec:
       volumes:
       - name: boulder-source
         hostPath:
-          path: /Users/sheurich/src/sheurich/boulder  # This needs to be adjusted for your environment
+          path: /boulder-src
 ---
 apiVersion: v1
 kind: Service

@@ -52,7 +52,7 @@ data:
     mysql_servers =
     (
       {
-        address = "boulder-mysql";
+        address = "bmysql";
         port = 3306;
         hostgroup = 0;
         max_connections = 100;

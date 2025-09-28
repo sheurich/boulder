@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: boulder-proxysql
+  name: bproxysql
   namespace: boulder-test
   labels:
-    app: boulder-proxysql
+    app: bproxysql
     app.kubernetes.io/name: proxysql
     app.kubernetes.io/component: database-proxy
     app.kubernetes.io/part-of: boulder
 spec:
   type: ClusterIP
   selector:
-    app: boulder-proxysql
+    app: bproxysql
   ports:
   - port: 6033
     targetPort: 6033

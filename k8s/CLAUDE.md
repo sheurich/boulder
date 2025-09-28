@@ -6,6 +6,12 @@ This file provides guidance to Claude Code when working with the Boulder Kuberne
 
 This is the Boulder Certificate Authority Kubernetes migration project, currently implementing **Phase 1: Drop-in CI Parity on Kubernetes**. The goal is to migrate Boulder from Docker Compose to Kubernetes while maintaining exact behavioral compatibility.
 
+### Namespace Strategy
+
+- **boulder-test**: CI environment mimicking Docker Compose setup (Phase 1 focus)
+- **boulder-dev**: Development environment (future Phase 2+)
+- **boulder-staging**: Staging environment (future Phase 2+)
+
 ## Working with Multiple Worktrees
 
 When working with multiple git worktrees on the same machine, use the `KIND_CLUSTER` environment variable to avoid cluster conflicts:
@@ -33,7 +39,7 @@ export KIND_CLUSTER=boulder-k8s-b1  # or boulder-k8s-main, boulder-k8s-feature-x
 # Run specific test types
 ./tk8s.sh --unit                      # Unit tests only
 ./tk8s.sh --integration                # Integration tests only
-./tk8s.sh --lints                      # Lints only
+./tk8s.sh --lints                      # Lints only (includes k8s YAML and shell script linting)
 
 # Advanced options
 ./tk8s.sh --unit --verbose             # Verbose output
@@ -83,25 +89,25 @@ KIND_CLUSTER=boulder-test ./k8s/scripts/k8s-down.sh
 
 ```bash
 # Check pod status
-kubectl get pods -n boulder
+kubectl get pods -n boulder-test
 
 # View Boulder logs
-kubectl logs -n boulder deployment/boulder-monolith
+kubectl logs -n boulder-test deployment/boulder-monolith
 
 # Execute commands in Boulder pod
-kubectl exec -n boulder deployment/boulder-monolith -- ./test.sh --unit
+kubectl exec -n boulder-test deployment/boulder-monolith -- ./test.sh --unit
 
 # Check service endpoints
-kubectl get services -n boulder
+kubectl get services -n boulder-test
 
 # View infrastructure services
-kubectl get all -n boulder -l tier=infrastructure
+kubectl get all -n boulder-test -l tier=infrastructure
 
 # Database operations
-kubectl exec -n boulder statefulset/bmysql -- mysql -u root -psecret boulder_sa -e "SHOW TABLES;"
+kubectl exec -n boulder-test statefulset/bmysql -- mysql -u root -psecret boulder_sa -e "SHOW TABLES;"
 
 # Redis operations
-kubectl exec -n boulder statefulset/bredis-1 -- redis-cli ping
+kubectl exec -n boulder-test statefulset/bredis-1 -- redis-cli ping
 ```
 
 ### Development Workflows
@@ -114,14 +120,14 @@ kubectl rollout restart deployment/boulder-monolith -n boulder
 
 # Apply configuration changes
 kubectl apply -f k8s/test/configmaps.yaml
-kubectl rollout restart deployment/boulder-monolith -n boulder
+kubectl rollout restart deployment/boulder-monolith -n boulder-test
 
 # Watch test execution
-watch kubectl get pods -n boulder
+watch kubectl get pods -n boulder-test
 
 # Port-forward for debugging
-kubectl port-forward -n boulder service/bjaeger 16686:16686  # Jaeger UI
-kubectl port-forward -n boulder service/bmysql 3306:3306      # MySQL
+kubectl port-forward -n boulder-test service/bjaeger 16686:16686  # Jaeger UI
+kubectl port-forward -n boulder-test service/bmysql 3306:3306      # MySQL
 ```
 
 ## Architecture Overview (Phase 1: Persistent Boulder Monolith)
@@ -253,13 +259,14 @@ Currently: All services in single namespace with network policies.
 |------|---------|
 | Run all tests in K8s | `./tk8s.sh` |
 | Run unit tests only | `./tk8s.sh --unit` |
+| Run lints with k8s YAML/shell linting | `./tk8s.sh --lints` |
 | Run with config-next | `./tnk8s.sh` |
 | Setup cluster | `./k8s/scripts/k8s-up.sh` |
 | Teardown cluster | `./k8s/scripts/k8s-down.sh` |
-| Check pod status | `kubectl get pods -n boulder` |
-| View Boulder logs | `kubectl logs -n boulder deployment/boulder-monolith` |
-| Execute in pod | `kubectl exec -n boulder deployment/boulder-monolith -- <cmd>` |
-| Port-forward Jaeger | `kubectl port-forward -n boulder service/bjaeger 16686:16686` |
+| Check pod status | `kubectl get pods -n boulder-test` |
+| View Boulder logs | `kubectl logs -n boulder-test deployment/boulder-monolith` |
+| Execute in pod | `kubectl exec -n boulder-test deployment/boulder-monolith -- <cmd>` |
+| Port-forward Jaeger | `kubectl port-forward -n boulder-test service/bjaeger 16686:16686` |
 
 ## Development Guidelines
 
@@ -267,7 +274,7 @@ Currently: All services in single namespace with network policies.
 
 1. **Always verify cluster state** before running tests:
    ```bash
-   kubectl get pods -n boulder
+   kubectl get pods -n boulder-test
    ```
 
 2. **Use appropriate test runner** based on config:
@@ -276,18 +283,24 @@ Currently: All services in single namespace with network policies.
 
 3. **Check service dependencies** when debugging:
    ```bash
-   kubectl get all -n boulder -l tier=infrastructure
+   kubectl get all -n boulder-test -l tier=infrastructure
    ```
 
 4. **Monitor logs** during test execution:
    ```bash
-   kubectl logs -f -n boulder deployment/boulder-monolith
+   kubectl logs -f -n boulder-test deployment/boulder-monolith
    ```
 
 5. **Validate manifests** before applying:
    ```bash
    kubectl apply --dry-run=client -f k8s/manifests/
    ```
+
+6. **Run k8s linting** to check YAML and shell scripts:
+   ```bash
+   ./tk8s.sh --lints  # Includes yamllint and shellcheck for k8s/ files
+   ```
+   Note: Install linters with `brew install yamllint shellcheck` if needed.
 
 ### Architecture Decision Records (ADRs)
 
@@ -308,11 +321,15 @@ When making significant architectural decisions during the Kubernetes migration,
 
 | Issue | Solution |
 |-------|----------|
-| Tests fail with connection errors | Check infrastructure services: `kubectl get pods -n boulder` |
+| Tests fail with connection errors | Check infrastructure services: `kubectl get pods -n boulder-test` |
 | Database not initialized | Run: `kubectl apply -f k8s/test/database-init-job.yaml` |
-| Services not discovering each other | Check Consul: `kubectl logs -n boulder statefulset/bconsul` |
-| Rate limiting not working | Verify Redis: `kubectl exec -n boulder statefulset/bredis-1 -- redis-cli ping` |
-| Can't connect to services | Check network policies: `kubectl get networkpolicies -n boulder` |
+| Services not discovering each other | Check Consul: `kubectl logs -n boulder-test statefulset/bconsul` |
+| Rate limiting not working | Verify Redis: `kubectl exec -n boulder-test statefulset/bredis-1 -- redis-cli ping` |
+| Can't connect to services | Check network policies: `kubectl get networkpolicies -n boulder-test` |
+| YAML linting errors | Fix with: `yamllint -d relaxed k8s/**/*.yaml` |
+| Shell script warnings | Fix with: `shellcheck k8s/**/*.sh` |
+| Duplicate keys in YAML | Check test-servers.yaml for duplicate volume definitions |
+| Missing newlines | Add newline at end of YAML files |
 
 ### Testing Strategy
 

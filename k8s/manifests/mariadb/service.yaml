@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: boulder-mysql
+  name: bmysql
   namespace: boulder-test
   labels:
-    app: boulder-mysql
+    app: bmysql
     app.kubernetes.io/name: mariadb
     app.kubernetes.io/component: database
     app.kubernetes.io/part-of: boulder
 spec:
   type: ClusterIP
   selector:
-    app: boulder-mysql
+    app: bmysql
   ports:
   - port: 3306
     targetPort: 3306

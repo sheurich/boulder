@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: boulder-mysql
+  name: bmysql
   namespace: boulder-test
   labels:
-    app: boulder-mysql
+    app: bmysql
     app.kubernetes.io/name: mariadb
     app.kubernetes.io/component: database
     app.kubernetes.io/part-of: boulder
 spec:
-  serviceName: boulder-mysql
+  serviceName: bmysql
   replicas: 1
   selector:
     matchLabels:
-      app: boulder-mysql
+      app: bmysql
   template:
     metadata:
       labels:
-        app: boulder-mysql
+        app: bmysql
         network: internal
     spec:
       containers:
@@ -26,8 +26,7 @@ spec:
         env:
         - name: MYSQL_ALLOW_EMPTY_PASSWORD
           value: "yes"
-        command:
-        - mysqld
+        args:
         - --bind-address=0.0.0.0
         - --slow-query-log
         - --log-output=TABLE

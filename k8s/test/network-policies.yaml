@@ -27,7 +27,7 @@ metadata:
   namespace: boulder-test
   labels:
     network-segment: internal
-    network-cidr: "10.77.77.0/24"
+    network-cidr: "10-77-77-0-24"
 spec:
   podSelector:
     matchLabels:
@@ -88,7 +88,7 @@ metadata:
   namespace: boulder-test
   labels:
     network-segment: public1
-    network-cidr: "64.112.117.0/25"
+    network-cidr: "64-112-117-0-25"
 spec:
   podSelector:
     matchLabels:
@@ -158,7 +158,7 @@ metadata:
   namespace: boulder-test
   labels:
     network-segment: public2
-    network-cidr: "64.112.117.128/25"
+    network-cidr: "64-112-117-128-25"
 spec:
   podSelector:
     matchLabels:

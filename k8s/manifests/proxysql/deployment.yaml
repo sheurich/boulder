@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: boulder-proxysql
+  name: bproxysql
   namespace: boulder-test
   labels:
-    app: boulder-proxysql
+    app: bproxysql
     app.kubernetes.io/name: proxysql
     app.kubernetes.io/component: database-proxy
     app.kubernetes.io/part-of: boulder
@@ -12,11 +12,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: boulder-proxysql
+      app: bproxysql
   template:
     metadata:
       labels:
-        app: boulder-proxysql
+        app: bproxysql
         network: internal
     spec:
       containers:
@@ -72,7 +72,7 @@ spec:
         - -c
         - |
           echo "Waiting for MariaDB to be ready..."
-          until nc -z boulder-mysql 3306; do
+          until nc -z bmysql 3306; do
             echo "MariaDB not ready yet. Retrying in 2 seconds..."
             sleep 2
           done

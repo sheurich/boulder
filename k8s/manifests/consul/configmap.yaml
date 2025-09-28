@@ -41,7 +41,7 @@ data:
     services {
       id      = "consul-health"
       name    = "consul"
-      address = "boulder-consul"
+      address = "bconsul"
       port    = 8500
       tags    = ["http"]
     }

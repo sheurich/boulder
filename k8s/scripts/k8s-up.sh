@@ -112,9 +112,23 @@ function create_cluster() {
     kind delete cluster --name "$CLUSTER_NAME" || true
   fi
 
-  # Create the cluster with our configuration
+  # Determine Boulder repository path dynamically
+  local boulder_repo_path
+  boulder_repo_path="$(cd ../.. && pwd)" || exit_error "Failed to determine Boulder repository path"
+
+  # Generate temporary kind config with dynamic Boulder path
+  local temp_kind_config
+  temp_kind_config=$(mktemp)
+  sed "s|hostPath: /Users/sheurich/src/sheurich/boulder|hostPath: ${boulder_repo_path}|g" "$KIND_CONFIG_PATH" > "$temp_kind_config"
+
   print_heading "Creating new cluster with configuration..."
-  kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG_PATH" --wait=5m
+  print_heading "Boulder repository path: $boulder_repo_path"
+
+  # Create cluster with dynamic config
+  kind create cluster --name "$CLUSTER_NAME" --config "$temp_kind_config" --wait=5m
+
+  # Clean up temporary config
+  rm -f "$temp_kind_config"
 
   # Set kubectl context
   kubectl cluster-info --context "kind-${CLUSTER_NAME}"

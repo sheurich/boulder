@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: boulder-jaeger
+  name: bjaeger
   namespace: boulder-test
   labels:
-    app: boulder-jaeger
+    app: bjaeger
     app.kubernetes.io/name: jaeger
     app.kubernetes.io/component: tracing
     app.kubernetes.io/part-of: boulder
 spec:
   type: ClusterIP
   selector:
-    app: boulder-jaeger
+    app: bjaeger
   ports:
   - port: 5775
     targetPort: 5775

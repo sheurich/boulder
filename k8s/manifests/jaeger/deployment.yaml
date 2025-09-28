@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: boulder-jaeger
+  name: bjaeger
   namespace: boulder-test
   labels:
-    app: boulder-jaeger
+    app: bjaeger
     app.kubernetes.io/name: jaeger
     app.kubernetes.io/component: tracing
     app.kubernetes.io/part-of: boulder
@@ -12,11 +12,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: boulder-jaeger
+      app: bjaeger
   template:
     metadata:
       labels:
-        app: boulder-jaeger
+        app: bjaeger
         network: internal
     spec:
       containers:
