@@ -4,18 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -273,17 +270,12 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				// Check if the error is retryable. We retry on specific transient
-				// network errors rather than using the deprecated Temporary() method.
-				// See golang/go#45729 for context on Temporary() deprecation.
-				isRetryable := isRetryableError(r.err)
+				// Retry all errors up to maxTries limit for maximum resilience.
+				isRetryable := true
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
-					// Chose a new server to retry the query with by incrementing the
-					// chosen server index modulo the number of servers. This ensures that
-					// if one dns server isn't available we retry with the next in the
-					// list.
+					// Rotate to next server on retry.
 					chosenServerIndex = (chosenServerIndex + 1) % len(servers)
 					chosenServer = servers[chosenServerIndex]
 					resolver = chosenServer
@@ -303,63 +295,6 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 	}
 }
 
-// isRetryableError determines if a DNS query error should be retried.
-// Instead of using the deprecated Temporary() method, we check for specific
-// error types that indicate transient network issues:
-//   - Timeout errors (via Timeout() method)
-//   - Context deadline exceeded
-//   - EOF errors (common in interrupted network operations)
-//   - Specific syscall errors (ECONNREFUSED, ECONNRESET, ECONNABORTED)
-func isRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for timeout errors (errors implementing net.Error with Timeout() == true)
-	type timeoutError interface {
-		Timeout() bool
-	}
-	var te timeoutError
-	if errors.As(err, &te) && te.Timeout() {
-		return true
-	}
-
-	// Check for context deadline exceeded
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	// Check for EOF errors which often indicate interrupted connections
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return true
-	}
-
-	// Check for specific transient syscall errors via net.OpError.
-	// Only retry on errors that indicate temporary connection issues:
-	// - ECONNREFUSED: server not accepting connections (may be restarting)
-	// - ECONNRESET: connection reset by peer (transient network issue)
-	// - ECONNABORTED: connection aborted (transient network issue)
-	// We explicitly do NOT retry permanent failures like:
-	// - EHOSTUNREACH, ENETUNREACH (routing problems)
-	// - EACCES, EPERM (permission/firewall issues)
-	// - DNS resolution failures ("no such host")
-	var opErr *net.OpError
-	if errors.As(err, &opErr) && opErr.Err != nil {
-		if errors.Is(opErr.Err, syscall.ECONNREFUSED) ||
-			errors.Is(opErr.Err, syscall.ECONNRESET) ||
-			errors.Is(opErr.Err, syscall.ECONNABORTED) {
-			return true
-		}
-	}
-
-	// For url.Error (common in HTTP-based DNS like DoH), unwrap and check the underlying error
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return isRetryableError(urlErr.Err)
-	}
-
-	return false
-}
 
 // isTLD returns a simplified view of whether something is a TLD: does it have
 // any dots in it? This returns true or false as a string, and is meant solely
