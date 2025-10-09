@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -308,7 +309,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 //   - Timeout errors (via Timeout() method)
 //   - Context deadline exceeded
 //   - EOF errors (common in interrupted network operations)
-//   - Connection refused/reset errors (via net.OpError)
+//   - Specific syscall errors (ECONNREFUSED, ECONNRESET, ECONNABORTED)
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -333,11 +334,20 @@ func isRetryableError(err error) bool {
 		return true
 	}
 
-	// Check for connection refused/reset errors via net.OpError
+	// Check for specific transient syscall errors via net.OpError.
+	// Only retry on errors that indicate temporary connection issues:
+	// - ECONNREFUSED: server not accepting connections (may be restarting)
+	// - ECONNRESET: connection reset by peer (transient network issue)
+	// - ECONNABORTED: connection aborted (transient network issue)
+	// We explicitly do NOT retry permanent failures like:
+	// - EHOSTUNREACH, ENETUNREACH (routing problems)
+	// - EACCES, EPERM (permission/firewall issues)
+	// - DNS resolution failures ("no such host")
 	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		// Connection refused and connection reset are retryable
-		if opErr.Op == "read" || opErr.Op == "write" || opErr.Op == "dial" {
+	if errors.As(err, &opErr) && opErr.Err != nil {
+		if errors.Is(opErr.Err, syscall.ECONNREFUSED) ||
+			errors.Is(opErr.Err, syscall.ECONNRESET) ||
+			errors.Is(opErr.Err, syscall.ECONNABORTED) {
 			return true
 		}
 	}
