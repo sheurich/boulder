@@ -5,7 +5,7 @@
 # ancillary files.
 #
 
-set -ex
+set -exo pipefail
 
 if [ -z "${GO_VERSION}" ] ; then
   echo "GO_VERSION not set"
@@ -33,6 +33,7 @@ VERSION="${GO_VERSION}.$(date +%s)"
 
 docker buildx build \
     --platform "$PLATFORM" \
+    --load \
     --file Containerfile \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \

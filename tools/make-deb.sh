@@ -2,8 +2,7 @@
 #
 # Produce a .deb from a built Boulder plus helper files.
 #
-# This script expects to run on Ubuntu, as configured on GitHub Actions runners
-# (with curl, make, and git installed).
+# This script expects to run on Ubuntu, as configured on GitHub Actions runners.
 #
 # -e Stops execution in the instance of a command or pipeline error.
 # -u Treat unset variables as an error and exit immediately.

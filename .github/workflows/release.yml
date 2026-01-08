@@ -1,8 +1,7 @@
 # Build the Boulder Debian package on tag push, and attach it to a GitHub
 # release.
 #
-# Keep the GO_VERSION matrix and the container-building steps in sync with
-# try-release.yml.
+# Keep the matrix and the container-building steps in sync with try-release.yml.
 name: Build release
 on:
   push:
@@ -10,41 +9,49 @@ on:
       - '**'
 
 jobs:
-  draft-release:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      go-versions: |-
+        [
+          "1.25.5"
+        ]
+      architectures: |-
+        [
+          "amd64",
+          "arm64"
+        ]
+    steps:
+      - run: echo "GO_VERSIONS configured in job outputs"
+
+  verify-ancestry:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: '0' # Needed for verify-release-ancestry.sh to see origin/main
+          fetch-depth: '0'
 
       - name: Verify release ancestry
         run: ./tools/verify-release-ancestry.sh "$GITHUB_SHA"
 
-      - name: Create draft release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # https://cli.github.com/manual/gh_release_create
-        run: gh release create --draft --generate-notes "${GITHUB_REF_NAME}"
-
-  push-release:
-    needs: draft-release
+  build-and-push:
+    needs: [verify-ancestry, setup]
     strategy:
-      fail-fast: false
       matrix:
-        GO_VERSION:
-          - "1.25.5"
-    runs-on: ubuntu-24.04
+        GO_VERSION: ${{ fromJSON(needs.setup.outputs.go-versions) }}
+        arch: ${{ fromJSON(needs.setup.outputs.architectures) }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     permissions:
-      contents: write
+      contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: '0' # Needed for verify-release-ancestry.sh to see origin/main
+          fetch-depth: '0'
 
       - name: Build Boulder container and .deb
         id: build
@@ -53,22 +60,14 @@ jobs:
         run: ./tools/container-build.sh
 
       - name: Tag Boulder container
-        run: docker tag boulder "ghcr.io/letsencrypt/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
-
-      - name: Compute checksums
-        id: checksums
-        # The files listed on this line must be identical to the files uploaded
-        # in the last step.
-        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
-
-      - name: Upload release files
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # https://cli.github.com/manual/gh_release_upload
-        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
+          TAG: ${{ github.ref_name }}-go${{ matrix.GO_VERSION }}-${{ matrix.arch }}
+        run: docker tag boulder "ghcr.io/letsencrypt/boulder:${TAG}"
 
       - name: Build ct-test-srv container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        env:
+          TAG: ${{ github.ref_name }}-go${{ matrix.GO_VERSION }}-${{ matrix.arch }}
+        run: docker buildx build --load . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${TAG}"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
@@ -78,23 +77,90 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push Boulder container
-        run: docker push "ghcr.io/letsencrypt/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        env:
+          TAG: ${{ github.ref_name }}-go${{ matrix.GO_VERSION }}-${{ matrix.arch }}
+        run: docker push "ghcr.io/letsencrypt/boulder:${TAG}"
 
       - name: Push ct-test-srv container
-        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        env:
+          TAG: ${{ github.ref_name }}-go${{ matrix.GO_VERSION }}-${{ matrix.arch }}
+        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${TAG}"
 
-  publish-release:
-    needs: push-release
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.GO_VERSION }}-${{ matrix.arch }}
+          path: |
+            boulder*.deb
+            boulder*.tar.gz
+
+  create-release:
+    needs: [build-and-push, setup]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Compute checksums
+        run: sha256sum boulder*.deb boulder*.tar.gz >| "boulder.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt"
+
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create --draft --generate-notes "${{ github.ref_name }}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-platform manifests
+        env:
+          TAG: ${{ github.ref_name }}
+          GO_VERSIONS: ${{ needs.setup.outputs.go-versions }}
+          ARCHITECTURES: ${{ needs.setup.outputs.architectures }}
+        run: |
+          set -euo pipefail
+          for GO_VERSION in $(echo "${GO_VERSIONS}" | jq -r '.[]'); do
+            TAG_BASE="${TAG}-go${GO_VERSION}"
+
+            # Build the list of arch-specific images
+            BOULDER_IMAGES=""
+            CT_IMAGES=""
+            for ARCH in $(echo "${ARCHITECTURES}" | jq -r '.[]'); do
+              BOULDER_IMAGES="${BOULDER_IMAGES} ghcr.io/letsencrypt/boulder:${TAG_BASE}-${ARCH}"
+              CT_IMAGES="${CT_IMAGES} ghcr.io/letsencrypt/ct-test-srv:${TAG_BASE}-${ARCH}"
+            done
+
+            if [ -z "${BOULDER_IMAGES}" ]; then
+              echo "Error: No Boulder images found for manifest" >&2
+              exit 1
+            fi
+
+            docker buildx imagetools create \
+              -t "ghcr.io/letsencrypt/boulder:${TAG_BASE}" \
+              ${BOULDER_IMAGES}
+            docker buildx imagetools create \
+              -t "ghcr.io/letsencrypt/ct-test-srv:${TAG_BASE}" \
+              ${CT_IMAGES}
+          done
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # https://cli.github.com/manual/gh_release_edit
-        run: gh release edit --draft=false "${GITHUB_REF_NAME}"
+        run: gh release edit --draft=false "${{ github.ref_name }}"
