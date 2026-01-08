@@ -3,10 +3,10 @@
 # files that are useful for predeployment testing.
 FROM docker.io/ubuntu:24.04 AS builder
 
-ARG COMMIT_ID
 ARG GO_VERSION
+ARG COMMIT_ID=dev
+ARG VERSION=${GO_VERSION}.0
 ARG TARGETPLATFORM
-ARG VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get --assume-yes --no-install-recommends --update install \
@@ -14,8 +14,14 @@ RUN apt-get --assume-yes --no-install-recommends --update install \
 
 COPY tools/fetch-and-verify-go.sh /tmp
 RUN case "${TARGETPLATFORM}" in \
-        "linux/amd64"|"") PLATFORM="linux-amd64" ;; \
+        "linux/amd64") PLATFORM="linux-amd64" ;; \
         "linux/arm64") PLATFORM="linux-arm64" ;; \
+        "") \
+            case "$(uname -m)" in \
+                x86_64) PLATFORM="linux-amd64" ;; \
+                aarch64|arm64) PLATFORM="linux-arm64" ;; \
+                *) echo "Unsupported architecture: $(uname -m)" && exit 1 ;; \
+            esac ;; \
         *) echo "Unsupported platform: ${TARGETPLATFORM}" && exit 1 ;; \
     esac && \
     /tmp/fetch-and-verify-go.sh ${GO_VERSION} ${PLATFORM}
