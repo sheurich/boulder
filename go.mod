@@ -93,3 +93,8 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
+
+replace (
+	github.com/eggsampler/acme/v3 => /Users/sheurich/work/method-18/acme
+	github.com/letsencrypt/challtestsrv => /Users/sheurich/work/method-18/challtestsrv
+)

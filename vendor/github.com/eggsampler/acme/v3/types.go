@@ -27,6 +27,12 @@ const (
 	ChallengeTypeHTTP01       = "http-01"
 	ChallengeTypeTLSALPN01    = "tls-alpn-01"
 
+	// ChallengeTypePKIValidation01 is the challenge type for the
+	// pki-validation-01 challenge, implementing BR §3.2.2.4.18
+	// "Agreed-Upon Change to Website v2" semantics on the client
+	// side of the ACME protocol.
+	ChallengeTypePKIValidation01 = "pki-validation-01"
+
 	// ChallengeTypeTLSSNI01 is deprecated and should not be used.
 	// See: https://community.letsencrypt.org/t/important-what-you-need-to-know-about-tls-sni-validation-issues/50811
 	ChallengeTypeTLSSNI01 = "tls-sni-01"

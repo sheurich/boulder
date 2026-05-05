@@ -146,7 +146,7 @@ github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
-# github.com/eggsampler/acme/v3 v3.8.0
+# github.com/eggsampler/acme/v3 v3.8.0 => /Users/sheurich/work/method-18/acme
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/felixge/httpsnoop v1.0.4
@@ -214,7 +214,7 @@ github.com/jmhodges/clock
 # github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f
 ## explicit; go 1.20
 github.com/letsencrypt/borp
-# github.com/letsencrypt/challtestsrv v1.4.2
+# github.com/letsencrypt/challtestsrv v1.4.2 => /Users/sheurich/work/method-18/challtestsrv
 ## explicit; go 1.24
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.1
@@ -579,3 +579,5 @@ google.golang.org/protobuf/types/known/wrapperspb
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1
+# github.com/eggsampler/acme/v3 => /Users/sheurich/work/method-18/acme
+# github.com/letsencrypt/challtestsrv => /Users/sheurich/work/method-18/challtestsrv

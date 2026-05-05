@@ -55,6 +55,12 @@ type ChallSrv struct {
 	// redirects is a map of paths to URLs. HTTP challenge servers respond to
 	// requests for these paths with a 301 to the corresponding URL.
 	redirects map[string]string
+
+	// pkiValidation01 is a map of filename values to response content served
+	// under the /.well-known/pki-validation/ path prefix for pki-validation-01
+	// responses. Filename is typically the base64url SHA-256 thumbprint of the
+	// ACME account key.
+	pkiValidation01 map[string]string
 }
 
 // dnsData holds the data used to respond to all DNS queries.
@@ -128,11 +134,12 @@ func New(config Config) (*ChallSrv, error) {
 	}
 
 	challSrv := &ChallSrv{
-		log:            config.Log,
-		requestHistory: make(map[string]map[RequestEventType][]RequestEvent),
-		httpOne:        make(map[string]string),
-		tlsALPNOne:     make(map[string]string),
-		redirects:      make(map[string]string),
+		log:             config.Log,
+		requestHistory:  make(map[string]map[RequestEventType][]RequestEvent),
+		httpOne:         make(map[string]string),
+		tlsALPNOne:      make(map[string]string),
+		redirects:       make(map[string]string),
+		pkiValidation01: make(map[string]string),
 		dnsData: dnsData{
 			defaultIPv4:     defaultIPv4,
 			defaultIPv6:     defaultIPv6,

@@ -145,6 +145,7 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s", auth)
 		}
 	}
+	s.maybeServePKIValidation01(w, r)
 }
 
 // challHTTPServer is a *http.Server that has a Shutdown() func that doesn't
