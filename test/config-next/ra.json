@@ -163,7 +163,8 @@
 			"CAARechecksFailOrder": true,
 			"AutomaticallyPauseZombieClients": true,
 			"DNSAccount01Enabled": true,
-			"DNSPersist01Enabled": true
+			"DNSPersist01Enabled": true,
+			"PKIValidation01Enabled": true
 		}
 	},
 	"pa": {
@@ -172,7 +173,8 @@
 			"dns-01": true,
 			"tls-alpn-01": true,
 			"dns-account-01": true,
-			"dns-persist-01": true
+			"dns-persist-01": true,
+			"pki-validation-01": true
 		},
 		"identifiers": {
 			"dns": true,

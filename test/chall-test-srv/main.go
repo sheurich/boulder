@@ -116,6 +116,8 @@ func main() {
 	if *httpOneBind != "" || *httpsOneBind != "" {
 		http.HandleFunc("/add-http01", oobSrv.addHTTP01)
 		http.HandleFunc("/del-http01", oobSrv.delHTTP01)
+		http.HandleFunc("/add-pki-validation01", oobSrv.addPKIValidation01)
+		http.HandleFunc("/del-pki-validation01", oobSrv.delPKIValidation01)
 		http.HandleFunc("/add-redirect", oobSrv.addHTTPRedirect)
 		http.HandleFunc("/del-redirect", oobSrv.delHTTPRedirect)
 	}
