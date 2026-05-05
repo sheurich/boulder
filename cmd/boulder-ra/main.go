@@ -169,6 +169,9 @@ func main() {
 	if features.Get().DNSPersist01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) {
 		cmd.Fail("Feature flag DNSPersist01Enabled and PA dns-persist-01 challenge must both be enabled or disabled")
 	}
+	if features.Get().PKIValidation01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypePKIValidation01) {
+		cmd.Fail("Feature flag PKIValidation01Enabled and PA pki-validation-01 challenge must both be enabled or disabled")
+	}
 
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")

@@ -634,6 +634,9 @@ func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]c
 		if features.Get().DNSPersist01Enabled {
 			challenges = append(challenges, core.ChallengeTypeDNSPersist01)
 		}
+		if features.Get().PKIValidation01Enabled {
+			challenges = append(challenges, core.ChallengeTypePKIValidation01)
+		}
 		return challenges, nil
 	case identifier.TypeIP:
 		// Only HTTP-01 and TLS-ALPN-01 are suitable for IP address identifiers

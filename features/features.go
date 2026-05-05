@@ -68,6 +68,14 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA and VA services for full functionality.
 	DNSPersist01Enabled bool
+
+	// PKIValidation01Enabled controls support for the pki-validation-01
+	// challenge type, which implements BR §3.2.2.4.18 "Agreed-Upon Change
+	// to Website v2" semantics over the ACME protocol lifecycle. When
+	// enabled, the server can offer and validate this challenge during
+	// certificate issuance. This flag must be set to true in the RA and
+	// VA services for full functionality.
+	PKIValidation01Enabled bool
 }
 
 var fMu = new(sync.RWMutex)

@@ -111,6 +111,8 @@ type vaMetrics struct {
 	tlsALPNOIDCounter                 *prometheus.CounterVec
 	http01Fallbacks                   prometheus.Counter
 	http01Redirects                   prometheus.Counter
+	pkiValidation01Fallbacks          prometheus.Counter
+	pkiValidation01Redirects          prometheus.Counter
 	caaCounter                        *prometheus.CounterVec
 	ipv4FallbackCounter               prometheus.Counter
 	// experimentConcurrence tracks whether the primary and experimental VAs
@@ -142,6 +144,14 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Name: "http01_redirects",
 		Help: "Number of HTTP-01 redirects followed",
 	})
+	pkiValidation01Fallbacks := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "pki_validation01_fallbacks",
+		Help: "Number of IPv6 to IPv4 fallback requests made during pki-validation-01 validation",
+	})
+	pkiValidation01Redirects := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "pki_validation01_redirects",
+		Help: "Number of redirects followed during pki-validation-01 validation",
+	})
 	caaCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "caa_sets_processed",
 		Help: "A counter of CAA sets processed labelled by result",
@@ -161,6 +171,8 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		tlsALPNOIDCounter:                 tlsALPNOIDCounter,
 		http01Fallbacks:                   http01Fallbacks,
 		http01Redirects:                   http01Redirects,
+		pkiValidation01Fallbacks:          pkiValidation01Fallbacks,
+		pkiValidation01Redirects:          pkiValidation01Redirects,
 		caaCounter:                        caaCounter,
 		ipv4FallbackCounter:               ipv4FallbackCounter,
 		experimentConcurrence:             experimentConcurrence,
@@ -501,6 +513,10 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 			// Strip a (potential) leading wildcard token from the identifier.
 			ident.Value = strings.TrimPrefix(ident.Value, "*.")
 			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+		}
+	case core.ChallengeTypePKIValidation01:
+		if features.Get().PKIValidation01Enabled {
+			return va.validatePKIValidation01(ctx, ident, token, keyAuthorization)
 		}
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)

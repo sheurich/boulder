@@ -32,3 +32,8 @@ func DNSAccountChallenge01(token string) Challenge {
 func DNSPersistChallenge01() Challenge {
 	return newChallenge(ChallengeTypeDNSPersist01, "")
 }
+
+// PKIValidationChallenge01 constructs a pki-validation-01 challenge.
+func PKIValidationChallenge01(token string) Challenge {
+	return newChallenge(ChallengeTypePKIValidation01, token)
+}

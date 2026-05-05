@@ -149,7 +149,7 @@ func TestDialerTimeout(t *testing.T) {
 	var took time.Duration
 	for range 20 {
 		started := time.Now()
-		_, _, err = va.processHTTPValidation(ctx, identifier.NewDNS("unroutable.invalid"), "/.well-known/acme-challenge/whatever")
+		_, _, err = va.processHTTPValidation(ctx, identifier.NewDNS("unroutable.invalid"), "/.well-known/acme-challenge/whatever", core.ChallengeTypeHTTP01)
 		took = time.Since(started)
 		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
@@ -1238,9 +1238,9 @@ func TestFetchHTTP(t *testing.T) {
 			var records []core.ValidationRecord
 			var err error
 			if tc.IPv6 {
-				body, records, err = vaIPv6.processHTTPValidation(ctx, tc.Ident, tc.Path)
+				body, records, err = vaIPv6.processHTTPValidation(ctx, tc.Ident, tc.Path, core.ChallengeTypeHTTP01)
 			} else {
-				body, records, err = vaIPv4.processHTTPValidation(ctx, tc.Ident, tc.Path)
+				body, records, err = vaIPv4.processHTTPValidation(ctx, tc.Ident, tc.Path, core.ChallengeTypeHTTP01)
 			}
 			if tc.ExpectedProblem == nil {
 				test.AssertNotError(t, err, "expected nil prob")
@@ -1714,7 +1714,7 @@ func TestHTTPHostHeader(t *testing.T) {
 			va, _ := setup(testSrv, "", nil, &ipFakeDNS{})
 
 			var got string
-			_, _, _ = va.processHTTPValidation(ctx, tc.Ident, "/ok")
+			_, _, _ = va.processHTTPValidation(ctx, tc.Ident, "/ok", core.ChallengeTypeHTTP01)
 			got = handler.host
 			if got != tc.want {
 				t.Errorf("Got host %#v, but want %#v", got, tc.want)

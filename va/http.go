@@ -435,7 +435,19 @@ func fallbackErr(err error) bool {
 func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
-	path string) ([]byte, []core.ValidationRecord, error) {
+	path string,
+	challengeType core.AcmeChallenge,
+) ([]byte, []core.ValidationRecord, error) {
+	// Route redirect / IPv4-fallback telemetry to the counter pair matching
+	// the challenge type. pki-validation-01 emits to parallel counters so
+	// per-method monitoring signal is preserved; HTTP-01 is the default.
+	redirectsCounter := va.metrics.http01Redirects
+	fallbacksCounter := va.metrics.http01Fallbacks
+	if challengeType == core.ChallengeTypePKIValidation01 {
+		redirectsCounter = va.metrics.pkiValidation01Redirects
+		fallbacksCounter = va.metrics.pkiValidation01Fallbacks
+	}
+
 	// Create a target for the host, port and path with no query parameters
 	target, err := va.newHTTPValidationTarget(ctx, ident, va.httpPort, path, "")
 	if err != nil {
@@ -519,7 +531,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			return berrors.ConnectionFailureError("Too many redirects")
 		}
 		numRedirects++
-		va.metrics.http01Redirects.Inc()
+		redirectsCounter.Inc()
 
 		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
 			return berrors.ConnectionFailureError(
@@ -623,7 +635,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 
 		records = append(records, retryRecord)
-		va.metrics.http01Fallbacks.Inc()
+		fallbacksCounter.Inc()
 		// Replace the transport's dialer with the preresolvedDialer for the retry
 		// host.
 		transport.DialContext = retryDialer.DialContext
@@ -672,7 +684,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", token)
-	body, validationRecords, err := va.processHTTPValidation(ctx, ident, "/"+path)
+	body, validationRecords, err := va.processHTTPValidation(ctx, ident, "/"+path, core.ChallengeTypeHTTP01)
 	if err != nil {
 		return validationRecords, err
 	}
