@@ -8,8 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -84,4 +87,56 @@ func TestValidatePKIValidation01IPIdentifierRejected(t *testing.T) {
 		t.Fatalf("expected malformed error for IP identifier, got nil")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
+}
+
+func TestValidatePKIValidation01MalformedKeyAuthorization(t *testing.T) {
+	va, _ := setup(nil, "", nil, nil)
+	cases := []struct {
+		name    string
+		keyAuth string
+	}{
+		{"empty", ""},
+		{"no dot", "nodot"},
+		{"dot at end", "token."},
+		{"just a dot", "."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := va.validatePKIValidation01(ctx,
+				identifier.NewDNS("example.com"), "tok", tc.keyAuth)
+			test.AssertErrorIs(t, err, berrors.Malformed)
+		})
+	}
+}
+
+func TestValidatePKIValidation01LeadingWhitespaceRejected(t *testing.T) {
+	// Leading whitespace must NOT be tolerated (only trailing is trimmed,
+	// matching HTTP-01 behavior). This test documents intent and guards
+	// against a future contributor changing TrimRightFunc to TrimSpace.
+	hs := startPKIValidationSrv(t, " "+expectedKeyAuthorization)
+	defer hs.Close()
+
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
+	_, err := va.validatePKIValidation01(ctx,
+		identifier.NewDNS("localhost.com"),
+		expectedToken, expectedKeyAuthorization)
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+}
+
+func TestValidatePKIValidation01DisabledByFeatureFlag(t *testing.T) {
+	// When PKIValidation01Enabled is false, validateChallenge must reject
+	// the challenge type with a MalformedProblem. setup() calls
+	// features.Reset() which sets the flag to false.
+	va, _ := setup(nil, "", nil, nil)
+
+	// Confirm the flag is off.
+	test.Assert(t, !features.Get().PKIValidation01Enabled,
+		"expected PKIValidation01Enabled to be false after setup")
+
+	_, err := va.validateChallenge(ctx,
+		identifier.NewDNS("example.com"),
+		core.ChallengeTypePKIValidation01,
+		expectedToken, expectedKeyAuthorization, "")
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }

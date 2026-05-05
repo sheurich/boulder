@@ -21,6 +21,13 @@ import (
 // must equal the full key authorization. Transport rules, redirect
 // policy, IPv4 fallback, MPIC, and response size limit are inherited
 // from processHTTPValidation (shared with HTTP-01).
+//
+// Redirect policy rationale: BR §3.2.2.4.18 does not independently
+// specify redirect constraints. The transport rules from §3.2.2.4.19
+// (max 10 redirects, HTTP/HTTPS scheme only, ports 80/443, TLS ≥1.2)
+// are inherited as the general HTTP validation transport requirements
+// that all HTTP-based BR methods share. This is the same interpretation
+// applied by other production CAs implementing HTTP-based methods.
 func (va *ValidationAuthorityImpl) validatePKIValidation01(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -43,6 +50,15 @@ func (va *ValidationAuthorityImpl) validatePKIValidation01(
 			"malformed key authorization for pki-validation-01: missing thumbprint")
 	}
 	thumbprint := parts[1]
+
+	// Defense-in-depth: reject thumbprints containing path separators.
+	// Legitimate thumbprints are base64url-encoded SHA-256 hashes and can
+	// only contain [A-Za-z0-9_-]. This guard protects against future
+	// refactors that might change how keyAuthorization reaches the VA.
+	if strings.ContainsAny(thumbprint, "/\\") {
+		return nil, berrors.MalformedError(
+			"malformed thumbprint for pki-validation-01: contains path separator")
+	}
 
 	path := fmt.Sprintf("/.well-known/pki-validation/%s", thumbprint)
 	body, records, err := va.processHTTPValidation(ctx, ident, path, core.ChallengeTypePKIValidation01)

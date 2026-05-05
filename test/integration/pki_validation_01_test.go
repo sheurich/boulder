@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"crypto/x509"
 	"os"
 	"testing"
 
@@ -64,6 +65,38 @@ func TestPKIValidation01HappyPath(t *testing.T) {
 	if auth.Status != "valid" {
 		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
 	}
+
+	// Finalize the order and verify a certificate is issued.
+	csr, err := makeCSR(nil, idents, false)
+	if err != nil {
+		t.Fatalf("making CSR: %s", err)
+	}
+	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
+	if err != nil {
+		t.Fatalf("finalizing order: %s", err)
+	}
+
+	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
+	if err != nil {
+		t.Fatalf("fetching certificates: %s", err)
+	}
+	if len(certs) == 0 {
+		t.Fatal("expected at least one certificate")
+	}
+	leaf, err := x509.ParseCertificate(certs[0].Raw)
+	if err != nil {
+		t.Fatalf("parsing leaf certificate: %s", err)
+	}
+	found := false
+	for _, name := range leaf.DNSNames {
+		if name == domain {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("issued certificate does not contain domain %q; DNSNames: %v", domain, leaf.DNSNames)
+	}
 }
 
 func TestPKIValidation01NotOfferedForWildcard(t *testing.T) {
@@ -123,8 +156,14 @@ func TestPKIValidation01BodyMismatch(t *testing.T) {
 		t.Fatal("pki-validation-01 challenge not offered by server")
 	}
 
-	// Intentionally publish wrong content — the filename is correct but
-	// the body is junk, so validation should fail with an unauthorized error.
+	// Intentionally publish content at a WRONG filename. The test server
+	// derives the filename from the keyAuthorization's thumbprint portion,
+	// so appending "-wrong" to the thumbprint creates a different filename.
+	// The VA requests the CORRECT filename (derived from the real thumbprint),
+	// finds no content there, and rejects with an empty-body mismatch.
+	// This exercises the "no valid response at expected path" failure mode.
+	// The body-comparison logic itself is covered by the unit test
+	// TestValidatePKIValidation01BodyMismatch in va/pki_validation_test.go.
 	parts := splitKeyAuth(chal.KeyAuthorization)
 	wrongKeyAuth := parts[0] + "." + parts[1] + "-wrong"
 	_, err = testSrvClient.AddPKIValidation01Response(wrongKeyAuth)
