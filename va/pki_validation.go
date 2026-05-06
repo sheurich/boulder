@@ -2,6 +2,8 @@ package va
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"unicode"
@@ -15,12 +17,16 @@ import (
 // pki-validation-01 challenge type, implementing BR §3.2.2.4.18
 // "Agreed-Upon Change to Website v2" semantics.
 //
-// The validation URL is /.well-known/pki-validation/<thumbprint>
-// where <thumbprint> is the second half of the key authorization
-// (base64url-encoded SHA-256 of the account JWK). The response body
-// must equal the full key authorization. Transport rules, redirect
-// policy, IPv4 fallback, MPIC, and response size limit are inherited
-// from processHTTPValidation (shared with HTTP-01).
+// The validation URL is /.well-known/pki-validation/<hash> where
+// <hash> is base64url(SHA-256(keyAuthorization)). Using the hash of
+// the full key authorization (rather than just the thumbprint) ensures
+// uniqueness per challenge, since each challenge has a unique token.
+// This avoids filename collisions when a single account validates the
+// same FQDN concurrently.
+//
+// The response body must equal the full key authorization. Transport
+// rules, redirect policy, IPv4 fallback, MPIC, and response size limit
+// are inherited from processHTTPValidation (shared with HTTP-01).
 //
 // Redirect policy rationale: BR §3.2.2.4.18 does not independently
 // specify redirect constraints. The transport rules from §3.2.2.4.19
@@ -39,28 +45,26 @@ func (va *ValidationAuthorityImpl) validatePKIValidation01(
 		return nil, berrors.MalformedError("Identifier type for pki-validation-01 challenge was not DNS")
 	}
 
-	// The thumbprint is the second half of the key authorization. The RA
-	// computes keyAuthorization as token + "." + base64url(SHA-256(JWK)),
-	// so splitting gives us the authoritative thumbprint without an extra
-	// gRPC field and without independent verification (the body check
-	// below provides all cryptographic binding to the account key).
-	parts := strings.SplitN(keyAuthorization, ".", 2)
-	if len(parts) != 2 || parts[1] == "" {
+	if keyAuthorization == "" {
 		return nil, berrors.MalformedError(
-			"malformed key authorization for pki-validation-01: missing thumbprint")
-	}
-	thumbprint := parts[1]
-
-	// Defense-in-depth: reject thumbprints containing path separators.
-	// Legitimate thumbprints are base64url-encoded SHA-256 hashes and can
-	// only contain [A-Za-z0-9_-]. This guard protects against future
-	// refactors that might change how keyAuthorization reaches the VA.
-	if strings.ContainsAny(thumbprint, "/\\") {
-		return nil, berrors.MalformedError(
-			"malformed thumbprint for pki-validation-01: contains path separator")
+			"malformed key authorization for pki-validation-01: empty")
 	}
 
-	path := fmt.Sprintf("/.well-known/pki-validation/%s", thumbprint)
+	// Defense-in-depth: warn on structurally unexpected keyAuthorization.
+	// The RA always produces "token.thumbprint" but a future bug might
+	// deliver garbage; this log aids diagnosis without rejecting the input.
+	if !strings.Contains(keyAuthorization, ".") {
+		va.log.Warningf("pki-validation-01: keyAuthorization %q has no dot separator", keyAuthorization)
+	}
+
+	// Derive filename from the full key authorization. The token component
+	// provides per-challenge uniqueness; hashing ensures the entire Request
+	// Token does not appear in the request used to retrieve the file
+	// (BR §3.2.2.4.18 line 947).
+	hash := sha256.Sum256([]byte(keyAuthorization))
+	filename := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	path := fmt.Sprintf("/.well-known/pki-validation/%s", filename)
 	body, records, err := va.processHTTPValidation(ctx, ident, path, core.ChallengeTypePKIValidation01)
 	if err != nil {
 		return records, err

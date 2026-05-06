@@ -1,11 +1,13 @@
 package va
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"strings"
+	"net/url"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -17,19 +19,20 @@ import (
 )
 
 // pkiValidationPath returns the well-known path a pki-validation-01
-// challenge response is expected at, given a thumbprint.
-func pkiValidationPath(thumbprint string) string {
-	return "/.well-known/pki-validation/" + thumbprint
+// challenge response is expected at, given a full key authorization.
+func pkiValidationPath(keyAuthorization string) string {
+	h := sha256.Sum256([]byte(keyAuthorization))
+	return "/.well-known/pki-validation/" + base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 // startPKIValidationSrv returns an httptest.Server that serves the
 // provided body at the expected pki-validation-01 path for the test
-// account thumbprint.
+// key authorization.
 func startPKIValidationSrv(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	m := http.NewServeMux()
 	hs := httptest.NewUnstartedServer(m)
-	m.HandleFunc(pkiValidationPath(expectedThumbprint), func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc(pkiValidationPath(expectedKeyAuthorization), func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, body)
 	})
 	hs.Start()
@@ -58,9 +61,14 @@ func TestValidatePKIValidation01Success(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected 1 validation record, got %d", len(records))
 	}
-	if !strings.Contains(records[0].URL, "/.well-known/pki-validation/"+expectedThumbprint) {
-		t.Errorf("record URL = %q, want containing /.well-known/pki-validation/%s",
-			records[0].URL, expectedThumbprint)
+	expectedPath := pkiValidationPath(expectedKeyAuthorization)
+	recordURL, err := url.Parse(records[0].URL)
+	if err != nil {
+		t.Fatalf("failed to parse record URL %q: %v", records[0].URL, err)
+	}
+	if recordURL.Path != expectedPath {
+		t.Errorf("record URL path = %q, want %q",
+			recordURL.Path, expectedPath)
 	}
 }
 
@@ -91,22 +99,11 @@ func TestValidatePKIValidation01IPIdentifierRejected(t *testing.T) {
 
 func TestValidatePKIValidation01MalformedKeyAuthorization(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
-	cases := []struct {
-		name    string
-		keyAuth string
-	}{
-		{"empty", ""},
-		{"no dot", "nodot"},
-		{"dot at end", "token."},
-		{"just a dot", "."},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := va.validatePKIValidation01(ctx,
-				identifier.NewDNS("example.com"), "tok", tc.keyAuth)
-			test.AssertErrorIs(t, err, berrors.Malformed)
-		})
-	}
+	// Only completely empty keyAuthorization is rejected now; any non-empty
+	// string is valid to hash.
+	_, err := va.validatePKIValidation01(ctx,
+		identifier.NewDNS("example.com"), "tok", "")
+	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
 func TestValidatePKIValidation01LeadingWhitespaceRejected(t *testing.T) {
@@ -139,4 +136,24 @@ func TestValidatePKIValidation01DisabledByFeatureFlag(t *testing.T) {
 		expectedToken, expectedKeyAuthorization, "")
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestValidatePKIValidation01UniqueFilenames(t *testing.T) {
+	// The primary motivation for using SHA-256(keyAuthorization) as the
+	// filename is that different tokens (same account) produce different
+	// paths. Under the old thumbprint-only scheme, these would collide.
+	ka1 := "tokenAAA." + expectedThumbprint
+	ka2 := "tokenBBB." + expectedThumbprint
+	path1 := pkiValidationPath(ka1)
+	path2 := pkiValidationPath(ka2)
+	if path1 == path2 {
+		t.Errorf("different tokens produced same path: %s", path1)
+	}
+	// Verify a known oracle value to catch algorithm/encoding regressions.
+	// Precomputed: base64url(SHA-256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+	const oracleKeyAuth = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+	const oraclePath = "/.well-known/pki-validation/LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"
+	if got := pkiValidationPath(oracleKeyAuth); got != oraclePath {
+		t.Errorf("oracle mismatch: got %q, want %q", got, oraclePath)
+	}
 }

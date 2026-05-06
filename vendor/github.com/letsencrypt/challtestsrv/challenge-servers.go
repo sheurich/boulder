@@ -58,8 +58,7 @@ type ChallSrv struct {
 
 	// pkiValidation01 is a map of filename values to response content served
 	// under the /.well-known/pki-validation/ path prefix for pki-validation-01
-	// responses. Filename is typically the base64url SHA-256 thumbprint of the
-	// ACME account key.
+	// responses. Filename is typically base64url(SHA-256(key_authorization)).
 	pkiValidation01 map[string]string
 }
 

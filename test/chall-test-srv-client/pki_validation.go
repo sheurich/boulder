@@ -1,8 +1,9 @@
 package challtestsrvclient
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
-	"strings"
 )
 
 const (
@@ -11,16 +12,15 @@ const (
 )
 
 // AddPKIValidation01Response adds an ACME pki-validation-01 challenge
-// response for the provided filename under the challenge test server's
-// /.well-known/pki-validation/ path. The filename should be the account
-// key thumbprint from the second half of the key authorization.
+// response for the filename derived from the key authorization. The filename
+// is base64url(SHA-256(keyAuthorization)), ensuring uniqueness per challenge.
 func (c *Client) AddPKIValidation01Response(keyauth string) ([]byte, error) {
-	parts := strings.SplitN(keyauth, ".", 2)
-	if len(parts) != 2 || parts[1] == "" {
+	if keyauth == "" {
 		return nil, fmt.Errorf(
-			"AddPKIValidation01Response: malformed key authorization %q", keyauth)
+			"AddPKIValidation01Response: empty key authorization")
 	}
-	filename := parts[1]
+	hash := sha256.Sum256([]byte(keyauth))
+	filename := base64.RawURLEncoding.EncodeToString(hash[:])
 	payload := map[string]string{"filename": filename, "content": keyauth}
 	resp, err := c.postURL(addPKIValidation, payload)
 	if err != nil {
@@ -34,12 +34,12 @@ func (c *Client) AddPKIValidation01Response(keyauth string) ([]byte, error) {
 // RemovePKIValidation01Response removes an ACME pki-validation-01 challenge
 // response for the filename derived from the provided key authorization.
 func (c *Client) RemovePKIValidation01Response(keyauth string) ([]byte, error) {
-	parts := strings.SplitN(keyauth, ".", 2)
-	if len(parts) != 2 || parts[1] == "" {
+	if keyauth == "" {
 		return nil, fmt.Errorf(
-			"RemovePKIValidation01Response: malformed key authorization %q", keyauth)
+			"RemovePKIValidation01Response: empty key authorization")
 	}
-	filename := parts[1]
+	hash := sha256.Sum256([]byte(keyauth))
+	filename := base64.RawURLEncoding.EncodeToString(hash[:])
 	payload := map[string]string{"filename": filename}
 	resp, err := c.postURL(delPKIValidation, payload)
 	if err != nil {
