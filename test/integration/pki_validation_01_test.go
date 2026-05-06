@@ -4,7 +4,6 @@ package integration
 
 import (
 	"crypto/x509"
-	"os"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -12,10 +11,6 @@ import (
 
 func TestPKIValidation01HappyPath(t *testing.T) {
 	t.Parallel()
-
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Test requires pki-validation-01 to be enabled")
-	}
 
 	domain := random_domain()
 	c, err := makeClient()
@@ -102,10 +97,6 @@ func TestPKIValidation01HappyPath(t *testing.T) {
 func TestPKIValidation01NotOfferedForWildcard(t *testing.T) {
 	t.Parallel()
 
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Test requires pki-validation-01 to be enabled")
-	}
-
 	domain := "*." + random_domain()
 	c, err := makeClient()
 	if err != nil {
@@ -130,10 +121,6 @@ func TestPKIValidation01NotOfferedForWildcard(t *testing.T) {
 
 func TestPKIValidation01BodyMismatch(t *testing.T) {
 	t.Parallel()
-
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Test requires pki-validation-01 to be enabled")
-	}
 
 	domain := random_domain()
 	c, err := makeClient()

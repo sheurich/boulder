@@ -136,7 +136,8 @@
 			}
 		},
 		"features": {
-			"AutomaticallyPauseZombieClients": true
+			"AutomaticallyPauseZombieClients": true,
+			"PKIValidation01Enabled": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
@@ -167,7 +168,8 @@
 		"challenges": {
 			"http-01": true,
 			"dns-01": true,
-			"tls-alpn-01": true
+			"tls-alpn-01": true,
+			"pki-validation-01": true
 		},
 		"identifiers": {
 			"dns": true,
